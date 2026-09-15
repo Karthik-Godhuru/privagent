@@ -1,0 +1,46 @@
+body {
+  width: 320px;
+  padding: 16px;
+  font-family: Arial, sans-serif;
+  background: #ffffff;
+  color: #222222;
+}
+
+h2 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+p {
+  font-size: 14px;
+}
+
+button {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 6px;
+  background: #2563eb;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+button:hover {
+  background: #1d4ed8;
+}
+
+#status {
+  color: #555555;
+}
+
+pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f2f2f2;
+  padding: 10px;
+  border-radius: 8px;
+  max-height: 300px;
+  overflow: auto;
+  font-size: 12px;
+}
