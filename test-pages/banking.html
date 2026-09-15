@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIVAGENT Demo Banking Portal</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 30px;
+      font-family: Arial, sans-serif;
+      background: #eef2f7;
+      color: #1f2937;
+    }
+
+    .container {
+      max-width: 700px;
+      margin: auto;
+    }
+
+    .header {
+      background: #1d4ed8;
+      color: white;
+      padding: 22px;
+      border-radius: 12px 12px 0 0;
+    }
+
+    .card {
+      background: white;
+      padding: 24px;
+      border-radius: 0 0 12px 12px;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      padding: 11px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 15px;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    button {
+      padding: 12px 18px;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      background: #2563eb;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #64748b;
+    }
+
+    a {
+      display: inline-block;
+      margin-top: 20px;
+      color: #1d4ed8;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>PRIVAGENT Demo Banking Portal</h1>
+      <p>Testing webpage understanding and privacy protection</p>
+    </div>
+
+    <div class="card">
+      <h2>Account Transfer</h2>
+
+      <div class="field">
+        <label for="customerName">Customer Name</label>
+        <input
+          id="customerName"
+          name="customerName"
+          type="text"
+          value="Rahul Kumar"
+        >
+      </div>
+
+      <div class="field">
+        <label for="accountNumber">Account Number</label>
+        <input
+          id="accountNumber"
+          name="accountNumber"
+          type="text"
+          value="123456789012"
+        >
+      </div>
+
+      <div class="field">
+        <label for="phone">Phone Number</label>
+        <input
+          id="phone"
+          name="phone"
+          type="tel"
+          value="9876543210"
+        >
+      </div>
+
+      <div class="field">
+        <label for="amount">Transfer Amount</label>
+        <input
+          id="amount"
+          name="amount"
+          type="number"
+          value="5000"
+        >
+      </div>
+
+      <div class="actions">
+        <button class="secondary" id="statementButton">
+          View Statement
+        </button>
+
+        <button id="transferButton">
+          Transfer Money
+        </button>
+      </div>
+
+      <a href="https://example.com" id="helpLink">
+        Need Help?
+      </a>
+    </div>
+  </div>
+</body>
+</html>
