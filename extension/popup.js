@@ -1,32 +1,78 @@
-const analyzeButton = document.getElementById("analyzeButton");
-const statusText = document.getElementById("status");
-const resultBox = document.getElementById("result");
+document
+  .getElementById("analyzeButton")
+  .addEventListener("click", async () => {
+    const statusElement = document.getElementById("status");
+    const resultElement = document.getElementById("result");
 
-analyzeButton.addEventListener("click", async () => {
-  statusText.textContent = "Analyzing page...";
-  resultBox.textContent = "";
+    statusElement.textContent = "Analyzing page...";
+    resultElement.textContent = "";
 
-  try {
-    const tabs = await chrome.tabs.query({
-      active: true,
-      currentWindow: true
-    });
+    try {
+      const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true
+      });
 
-    const activeTab = tabs[0];
+      if (!tabs || tabs.length === 0) {
+        throw new Error("No active tab found.");
+      }
 
-    if (!activeTab || !activeTab.id) {
-      throw new Error("No active tab found.");
+      const activeTab = tabs[0];
+
+      if (!activeTab.id) {
+        throw new Error("Active tab ID is unavailable.");
+      }
+
+      const response = await chrome.tabs.sendMessage(
+        activeTab.id,
+        {
+          type: "EXTRACT_PAGE"
+        }
+      );
+
+      if (!response) {
+        throw new Error("No response received from the webpage.");
+      }
+
+      displayAnalysisResult(response);
+
+      statusElement.textContent = "Analysis completed successfully.";
+    } catch (error) {
+      console.error("PRIVAGENT analysis error:", error);
+
+      statusElement.textContent = "Analysis failed.";
+
+      resultElement.textContent =
+        "Unable to analyze this page.\n\n" +
+        "Possible reasons:\n" +
+        "1. The content script is not loaded yet.\n" +
+        "2. The current page is a restricted Chrome page.\n" +
+        "3. The extension needs to be reloaded.\n\n" +
+        "Error: " +
+        error.message;
     }
+  });
 
-    const response = await chrome.tabs.sendMessage(activeTab.id, {
-      type: "EXTRACT_PAGE"
-    });
+function displayAnalysisResult(data) {
+  const resultElement = document.getElementById("result");
 
-    resultBox.textContent = JSON.stringify(response, null, 2);
-    statusText.textContent = "Analysis complete";
-  } catch (error) {
-    statusText.textContent = "Error";
-    resultBox.textContent =
-      "Unable to analyze this page.\n\n" + error.message;
-  }
-});
+  const sensitiveFindings = Array.isArray(data.sensitiveFindings)
+    ? data.sensitiveFindings
+    : [];
+
+  const result = {
+    pageTitle: data.pageTitle || "",
+    url: data.url || "",
+    buttons: data.buttons || [],
+    inputs: data.inputs || [],
+    links: data.links || [],
+    visibleText: data.visibleText || "",
+    sensitiveDataCount:
+      data.sensitiveDataCount !== undefined
+        ? data.sensitiveDataCount
+        : sensitiveFindings.length,
+    sensitiveFindings: sensitiveFindings
+  };
+
+  resultElement.textContent = JSON.stringify(result, null, 2);
+}
