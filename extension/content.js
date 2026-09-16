@@ -12,11 +12,13 @@ function isVisible(element) {
 }
 
 function extractPageInformation() {
-  const buttons = Array.from(document.querySelectorAll("button"))
+  const buttons = Array.from(
+    document.querySelectorAll("button")
+  )
     .filter(isVisible)
     .map((button) => ({
       text: button.innerText.trim(),
-      id: button.id || null,
+      id: button.id || "",
       disabled: button.disabled
     }));
 
@@ -26,47 +28,47 @@ function extractPageInformation() {
     .filter(isVisible)
     .map((element) => ({
       tag: element.tagName.toLowerCase(),
-      type: element.type || null,
-      id: element.id || null,
-      name: element.name || null,
-      placeholder: element.placeholder || null,
-      ariaLabel: element.getAttribute("aria-label") || null,
+      type: element.type || "",
+      id: element.id || "",
+      name: element.name || "",
+      placeholder: element.placeholder || "",
+      ariaLabel: element.getAttribute("aria-label") || "",
       value: element.value || ""
     }));
 
-  const links = Array.from(document.querySelectorAll("a"))
+  const links = Array.from(
+    document.querySelectorAll("a")
+  )
     .filter(isVisible)
     .map((link) => ({
       text: link.innerText.trim(),
       href: link.href
     }));
 
-  const visibleText = document.body.innerText
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 3000);
-
-  return {
+  const pageInformation = {
     pageTitle: document.title,
     url: window.location.href,
     buttons,
     inputs,
     links,
-    visibleText
+    visibleText: document.body.innerText
+      .replace(/\s+/g, " ")
+      .trim()
+      .substring(0, 5000)
   };
+
+  return pageInformation;
 }
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === "EXTRACT_PAGE") {
-    try {
-      const pageInformation = extractPageInformation();
-      sendResponse(pageInformation);
-    } catch (error) {
-      sendResponse({
-        error: error.message
-      });
+chrome.runtime.onMessage.addListener(
+  (request, sender, sendResponse) => {
+    if (request.type === "EXTRACT_PAGE") {
+      const rawPageInformation = extractPageInformation();
+
+      const sanitizedPageInformation =
+        sanitizePageInformation(rawPageInformation);
+
+      sendResponse(sanitizedPageInformation);
     }
   }
-
-  return true;
-});
+);
