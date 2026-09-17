@@ -13,7 +13,10 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["privacy.js", "content.js"],
+      "js": [
+        "privacy.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ]
