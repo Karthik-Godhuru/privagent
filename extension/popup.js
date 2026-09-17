@@ -23,12 +23,37 @@ document
         throw new Error("Active tab ID is unavailable.");
       }
 
-      const response = await chrome.tabs.sendMessage(
-        activeTab.id,
-        {
-          type: "EXTRACT_PAGE"
-        }
-      );
+      let response;
+
+      try {
+        response = await chrome.tabs.sendMessage(
+          activeTab.id,
+          {
+            type: "EXTRACT_PAGE"
+          }
+        );
+      } catch (connectionError) {
+        console.log(
+          "Content script was not connected. Injecting scripts now..."
+        );
+
+        await chrome.scripting.executeScript({
+          target: {
+            tabId: activeTab.id
+          },
+          files: [
+            "privacy.js",
+            "content.js"
+          ]
+        });
+
+        response = await chrome.tabs.sendMessage(
+          activeTab.id,
+          {
+            type: "EXTRACT_PAGE"
+          }
+        );
+      }
 
       if (!response) {
         throw new Error("No response received from the webpage.");
@@ -36,18 +61,24 @@ document
 
       displayAnalysisResult(response);
 
-      statusElement.textContent = "Analysis completed successfully.";
-    } catch (error) {
-      console.error("PRIVAGENT analysis error:", error);
+      statusElement.textContent =
+        "Analysis completed successfully.";
 
-      statusElement.textContent = "Analysis failed.";
+    } catch (error) {
+      console.error(
+        "PRIVAGENT analysis error:",
+        error
+      );
+
+      statusElement.textContent =
+        "Analysis failed.";
 
       resultElement.textContent =
         "Unable to analyze this page.\n\n" +
         "Possible reasons:\n" +
-        "1. The content script is not loaded yet.\n" +
-        "2. The current page is a restricted Chrome page.\n" +
-        "3. The extension needs to be reloaded.\n\n" +
+        "1. The current page is a restricted Chrome page.\n" +
+        "2. The extension needs to be reloaded.\n" +
+        "3. File access permission is disabled.\n\n" +
         "Error: " +
         error.message;
     }
@@ -56,9 +87,10 @@ document
 function displayAnalysisResult(data) {
   const resultElement = document.getElementById("result");
 
-  const sensitiveFindings = Array.isArray(data.sensitiveFindings)
-    ? data.sensitiveFindings
-    : [];
+  const sensitiveFindings =
+    Array.isArray(data.sensitiveFindings)
+      ? data.sensitiveFindings
+      : [];
 
   const result = {
     pageTitle: data.pageTitle || "",
@@ -71,8 +103,10 @@ function displayAnalysisResult(data) {
       data.sensitiveDataCount !== undefined
         ? data.sensitiveDataCount
         : sensitiveFindings.length,
-    sensitiveFindings: sensitiveFindings
+    sensitiveFindings: sensitiveFindings,
+    privacyReport: data.privacyReport || {}
   };
 
-  resultElement.textContent = JSON.stringify(result, null, 2);
+  resultElement.textContent =
+    JSON.stringify(result, null, 2);
 }
