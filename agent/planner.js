@@ -1,27 +1,26 @@
-function createPlan(userCommand, pageState) {
-    const command = userCommand.toLowerCase();
+async function createPlan(userCommand, pageState, taskState) {
 
-    if (command.includes("search")) {
-        const searchBox = pageState.elements?.find(
-            element =>
-                element.type === "input" &&
-                element.label?.toLowerCase().includes("search")
+    const response = await fetch("http://localhost:8000/plan", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            command: userCommand,
+            page_state: pageState,
+            task_state: taskState
+        })
+    });
+
+    if (!response.ok) {
+        throw new Error(
+            `Agent server error: ${response.status}`
         );
-
-        if (searchBox) {
-            return {
-                action: "type",
-                target: searchBox.id,
-                value: userCommand
-            };
-        }
     }
 
-    return {
-        action: "wait",
-        target: null,
-        value: null
-    };
+    const plan = await response.json();
+
+    return plan;
 }
 
 module.exports = {
