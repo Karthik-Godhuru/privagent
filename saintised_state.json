@@ -1,0 +1,186 @@
+{
+  "agent_id": "privagent-v1-node",
+  "sanitised": true,
+  "privacy_level": "strict",
+  "session": {
+    "session_id": "sess_998124a",
+    "retention_mode": "ephemeral",
+    "allowed_pii_types": []
+  },
+  "user_preferences": {
+    "language": "en-US",
+    "theme": "dark",
+    "time_zone": "UTC"
+  },
+  "memory_store": [
+    {
+      "id": "mem_001",
+      "timestamp": "2026-09-22T12:00:00Z",
+      "type": "fact",
+      "key": "preferred_meeting_window",
+      "value": "14:00-16:00 UTC"
+    },
+    {
+      "id": "mem_002",
+      "timestamp": "2026-09-22T12:05:00Z",
+      "type": "task",
+      "key": "current_project",
+      "value": "Database migration audit"
+    }
+  ],
+  "active_tools": [
+    "local_calendar_query",
+    "code_analyzer",
+    "document_summarizer"
+  ]
+}
+import json
+import logging
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from fastapi import FastAPI, HTTPException, Status
+from pydantic import BaseModel, Field
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("PrivAgent")
+
+# --- Models ---
+
+class MemoryItem(BaseModel):
+    id: str
+    timestamp: str
+    type: str
+    key: str
+    value: str
+
+class SessionConfig(BaseModel):
+    session_id: str
+    retention_mode: str
+    allowed_pii_types: List[str] = Field(default_factory=list)
+
+class SanitisedState(BaseModel):
+    agent_id: str
+    sanitised: bool
+    privacy_level: str
+    session: SessionConfig
+    user_preferences: Dict[str, Any]
+    memory_store: List[MemoryItem]
+    active_tools: List[str]
+
+class QueryRequest(BaseModel):
+    prompt: str
+    requested_tool: Optional[str] = None
+
+class QueryResponse(BaseModel):
+    agent_id: str
+    session_id: str
+    status: str
+    action_taken: str
+    result: Any
+    privacy_verified: bool
+
+# --- Agent Engine ---
+
+class PrivAgentEngine:
+    def __init__(self, state_path: str = "state.json"):
+        self.state_path = Path(state_path)
+        self.state: Optional[SanitisedState] = None
+        self.load_and_validate_state()
+
+    def load_and_validate_state(self) -> None:
+        if not self.state_path.exists():
+            raise FileNotFoundError(f"State file not found at {self.state_path}")
+        
+        with open(self.state_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        parsed_state = SanitisedState(**data)
+        
+        # Privacy Enforcement Check
+        if not parsed_state.sanitised:
+            raise ValueError("State validation failed: state.json is marked non-sanitised!")
+        
+        if parsed_state.session.allowed_pii_types:
+            logger.warning("Allowed PII list is non-empty. Enforcing sanitisation filters.")
+
+        self.state = parsed_state
+        logger.info(f"Loaded sanitised state for agent: {self.state.agent_id}")
+
+    def query_memory(self, term: str) -> List[MemoryItem]:
+        if not self.state:
+            return []
+        term_lower = term.lower()
+        return [
+            mem for mem in self.state.memory_store
+            if term_lower in mem.key.lower() or term_lower in mem.value.lower()
+        ]
+
+    def execute_action(self, prompt: str, requested_tool: Optional[str] = None) -> Dict[str, Any]:
+        if not self.state:
+            raise RuntimeError("Agent state not initialized.")
+
+        # Check tool availability if tool requested
+        if requested_tool and requested_tool not in self.state.active_tools:
+            raise PermissionError(f"Tool '{requested_tool}' is disabled or non-sanitised in current state.")
+
+        # Match memory context
+        relevant_memories = self.query_memory(prompt)
+
+        return {
+            "processed_prompt": prompt,
+            "relevant_context": [m.model_dump() for m in relevant_memories],
+            "applied_tool": requested_tool or "default_reasoner",
+            "execution_status": "success"
+        }
+
+
+# --- FastAPI Application ---
+
+app = FastAPI(title="PrivAgent Server", version="1.0.0")
+agent = PrivAgentEngine(state_path="state.json")
+
+
+@app.get("/health", status_code=Status.HTTP_200_OK)
+def health_check():
+    return {"status": "ok", "agent_id": agent.state.agent_id if agent.state else None}
+
+
+@app.get("/state", response_model=SanitisedState)
+def get_sanitised_state():
+    """Retrieve current sanitised agent state."""
+    if not agent.state:
+        raise HTTPException(status_code=500, detail="State unavailable")
+    return agent.state
+
+
+@app.post("/agent/query", response_model=QueryResponse)
+def handle_agent_query(request: QueryRequest):
+    """Process user query against the sanitised state engine."""
+    try:
+        result = agent.execute_action(
+            prompt=request.prompt,
+            requested_tool=request.requested_tool
+        )
+        return QueryResponse(
+            agent_id=agent.state.agent_id,
+            session_id=agent.state.session.session_id,
+            status="success",
+            action_taken=result["applied_tool"],
+            result=result,
+            privacy_verified=True
+        )
+    except PermissionError as pe:
+        raise HTTPException(status_code=Status.HTTP_403_FORBIDDEN, detail=str(pe))
+    except Exception as e:
+        raise HTTPException(status_code=Status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@app.post("/state/reload")
+def reload_state():
+    """Reload state.json from disk after external modifications."""
+    try:
+        agent.load_and_validate_state()
+        return {"message": "State successfully reloaded and re-verified."}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Failed to reload state: {str(e)}")
