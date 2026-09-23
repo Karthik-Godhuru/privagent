@@ -1,0 +1,135 @@
+{
+  "timestamp": "2026-09-22T15:16:08Z",
+  "context": {
+    "domain": "test-pages",
+    "page_type": "banking",
+    "viewport": {"width": 1920, "height": 1080}
+  },
+  "safe_labels": [
+    {"id": "nav-1", "text": "Account Settings", "type": "link"},
+    {"id": "btn-submit", "text": "Transfer Funds", "type": "button"}
+  ],
+  "redacted_regions": [
+    {"id": "mask-1", "entity": "account_balance", "bounds": {"x": 450, "y": 200, "w": 120, "h": 30}, "method": "semantic_obfuscation"},
+    {"id": "mask-2", "entity": "user_name", "bounds": {"x": 800, "y": 50, "w": 150, "h": 25}, "method": "blur"}
+  ],
+  "action_candidates": ["click", "type", "scroll", "navigate"]
+}
+{
+  "metadata": {
+    "timestamp": "2026-09-22T15:20:53Z",
+    "domain": "test-pages",
+    "page_type": "banking.html",
+    "viewport": {
+      "width": 1920,
+      "height": 1080
+    },
+    "privacy_gate_version": "1.0.0"
+  },
+  "safe_labels": [
+    {
+      "id": "nav-dashboard",
+      "text": "Dashboard",
+      "role": "link",
+      "bounding_box": {"x": 10, "y": 50, "w": 100, "h": 20}
+    },
+    {
+      "id": "btn-transfer",
+      "text": "Initiate Transfer",
+      "role": "button",
+      "bounding_box": {"x": 850, "y": 400, "w": 150, "h": 40}
+    },
+    {
+      "id": "input-amount",
+      "text": "Enter Amount",
+      "role": "textbox",
+      "bounding_box": {"x": 850, "y": 300, "w": 200, "h": 35}
+    }
+  ],
+  "redacted_regions": [
+    {
+      "id": "mask-001",
+      "entity_type": "account_number",
+      "obfuscation_method": "semantic_masking",
+      "bounding_box": {"x": 300, "y": 150, "w": 220, "h": 30},
+      "semantic_tag": "[PRIMARY_CHECKING_ACCOUNT]"
+    },
+    {
+      "id": "mask-002",
+      "entity_type": "account_balance",
+      "obfuscation_method": "blur",
+      "bounding_box": {"x": 550, "y": 150, "w": 120, "h": 30},
+      "semantic_tag": "[REDACTED_BALANCE]"
+    },
+    {
+      "id": "mask-003",
+      "entity_type": "user_name",
+      "obfuscation_method": "solid_color",
+      "bounding_box": {"x": 1700, "y": 20, "w": 180, "h": 25},
+      "semantic_tag": "[USER_PROFILE_NAME]"
+    }
+  ],
+  "action_candidates": [
+    {"action": "click", "target_id": "btn-transfer"},
+    {"action": "type", "target_id": "input-amount", "expected_format": "numeric"}
+  ],
+  "security_validation": {
+    "raw_pixels_transmitted": false,
+    "pii_detected_and_masked": true,
+    "fail_closed_triggered": false
+  }
+}
+import json
+from pydantic import BaseModel, Field, ValidationError
+from typing import List, Dict, Optional
+
+class BoundingBox(BaseModel):
+    x: int
+    y: int
+    w: int
+    h: int
+
+class SafeLabel(BaseModel):
+    id: str
+    text: str
+    role: str
+    bounding_box: BoundingBox
+
+class RedactedRegion(BaseModel):
+    id: str
+    entity_type: str
+    obfuscation_method: str
+    bounding_box: BoundingBox
+    semantic_tag: str
+
+class SecurityValidation(BaseModel):
+    raw_pixels_transmitted: bool = Field(False, description="Must always be false")
+    pii_detected_and_masked: bool
+    fail_closed_triggered: bool
+
+class SanitizedState(BaseModel):
+    metadata: Dict
+    safe_labels: List[SafeLabel]
+    redacted_regions: List[RedactedRegion]
+    action_candidates: List[Dict]
+    security_validation: SecurityValidation
+
+def validate_payload(file_path: str):
+    """Enforces the privacy boundary before server processing."""
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    
+    try:
+        validated_state = SanitizedState(**data)
+        if validated_state.security_validation.raw_pixels_transmitted:
+            raise ValueError("CRITICAL PRIVACY BREACH: Raw pixels flagged in payload.")
+        print("Payload validated. Minimum necessary context preserved.")
+        return validated_state
+    except ValidationError as e:
+        print(f"Validation Error: {e}")
+        # Trigger fail-closed protocol
+        return None
+
+if __name__ == "__main__":
+    # Test the mock data
+    validate_payload("sanitized_state.json")
