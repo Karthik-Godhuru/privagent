@@ -3,11 +3,12 @@ const ALLOWED_ACTIONS = [
     "type",
     "scroll",
     "navigate",
-    "select",
-    "wait"
+    "wait",
+    "noop"
 ];
 
 function isValidAction(action) {
+
     if (!action || typeof action !== "object") {
         return false;
     }
@@ -16,8 +17,18 @@ function isValidAction(action) {
         return false;
     }
 
-    if (action.action !== "wait" && !action.target) {
-        return false;
+    // wait and noop don't need a target
+    if (
+        action.action !== "wait" &&
+        action.action !== "noop"
+    ) {
+        if (action.action === "navigate") {
+            return typeof action.url === "string" && action.url.length > 0;
+        }
+
+        if (!action.selector) {
+            return false;
+        }
     }
 
     return true;
