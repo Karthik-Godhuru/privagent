@@ -1,6 +1,7 @@
 const { isValidAction } = require("./action-schema");
 
 function validateAction(action, pageState) {
+
     if (!isValidAction(action)) {
         return {
             allowed: false,
@@ -8,21 +9,33 @@ function validateAction(action, pageState) {
         };
     }
 
-    if (action.action === "wait") {
+    if (
+        action.action === "wait" ||
+        action.action === "noop"
+    ) {
         return {
             allowed: true,
-            reason: "Valid wait action"
+            reason: "Valid non-browser-target action"
         };
     }
 
-    const elementExists = pageState.elements?.some(
-        element => element.id === action.target
-    );
+    if (action.action === "navigate") {
+        return {
+            allowed: true,
+            reason: "Valid navigation action"
+        };
+    }
+
+    const elementExists =
+        pageState?.elements?.some(
+            element =>
+                element.selector === action.selector
+        );
 
     if (!elementExists) {
         return {
             allowed: false,
-            reason: "Target element does not exist"
+            reason: "Target selector does not exist on the page"
         };
     }
 
