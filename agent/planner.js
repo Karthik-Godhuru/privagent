@@ -1,27 +1,48 @@
-async function createPlan(userCommand, pageState, taskState) {
+async function createPlan(userCommand, pageState, taskState = {}) {
 
-    const response = await fetch("http://localhost:8000/plan", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            command: userCommand,
-            page_state: pageState,
-            task_state: taskState
-        })
-    });
+    const response = await fetch(
+        "http://127.0.0.1:8000/agent",
+        {
+            method: "POST",
+
+            headers: {
+                "Content-Type": "application/json"
+            },
+
+            body: JSON.stringify({
+                command: userCommand,
+
+                sanitized_context: pageState,
+
+                task_state: taskState
+            })
+        }
+    );
 
     if (!response.ok) {
+
         throw new Error(
             `Agent server error: ${response.status}`
         );
     }
 
-    const plan = await response.json();
+    const result = await response.json();
 
-    return plan;
+    /*
+     * The server returns an agent response.
+     * Extract the proposed action.
+     */
+
+    if (!result.action) {
+
+        throw new Error(
+            "Agent server did not return an action."
+        );
+    }
+
+    return result.action;
 }
+
 
 module.exports = {
     createPlan
