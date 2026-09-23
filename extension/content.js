@@ -78,16 +78,12 @@ function findInteractiveElements() {
 
 function createSelector(element) {
 
-    // Prefer the element ID when available.
-    if (element.id) {
-        return `#${CSS.escape(element.id)}`;
-    }
-
-    // Create a local identifier instead of exposing
-    // potentially sensitive name/value attributes.
     if (!element.dataset.privagentId) {
+
         element.dataset.privagentId =
-            `pa-${Math.random().toString(36).slice(2, 10)}`;
+            `pa-${Math.random()
+                .toString(36)
+                .slice(2, 10)}`;
     }
 
     return `[data-privagent-id="${element.dataset.privagentId}"]`;
