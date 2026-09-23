@@ -13,14 +13,31 @@ function getPageState() {
 
     const elements = findInteractiveElements();
 
-    return {
+    const rawPageState = {
         title: document.title,
         url: window.location.href,
         text: document.body?.innerText || "",
-        elements
+        elements: elements
     };
-}
 
+    // Keep raw page data inside the browser.
+    // Only sanitized data is returned.
+    if (
+        typeof PrivAgentPrivacy === "undefined" ||
+        typeof PrivAgentPrivacy.sanitizePageState !== "function"
+    ) {
+        console.error("PrivAgent Privacy Gate is not available.");
+
+        return {
+            title: "",
+            url: "",
+            text: "",
+            elements: []
+        };
+    }
+
+    return PrivAgentPrivacy.sanitizePageState(rawPageState);
+}
 
 // ------------------------------------------------------------
 // FIND INTERACTIVE ELEMENTS
@@ -61,15 +78,19 @@ function findInteractiveElements() {
 
 function createSelector(element) {
 
+    // Prefer the element ID when available.
     if (element.id) {
         return `#${CSS.escape(element.id)}`;
     }
 
-    if (element.name) {
-        return `${element.tagName.toLowerCase()}[name="${CSS.escape(element.name)}"]`;
+    // Create a local identifier instead of exposing
+    // potentially sensitive name/value attributes.
+    if (!element.dataset.privagentId) {
+        element.dataset.privagentId =
+            `pa-${Math.random().toString(36).slice(2, 10)}`;
     }
 
-    return null;
+    return `[data-privagent-id="${element.dataset.privagentId}"]`;
 }
 
 
