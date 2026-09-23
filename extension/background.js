@@ -9,6 +9,11 @@ const ALLOWED_ACTIONS = [
     "noop"
 ];
 
+
+// --------------------------------------------------
+// EXTENSION INSTALLED
+// --------------------------------------------------
+
 chrome.runtime.onInstalled.addListener(() => {
     console.log("PrivAgent installed successfully.");
 });
@@ -18,72 +23,103 @@ chrome.runtime.onInstalled.addListener(() => {
 // MESSAGE HANDLER
 // --------------------------------------------------
 
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(
+    (message, sender, sendResponse) => {
 
-    if (!message || !message.type) {
+        if (!message || !message.type) {
+
+            sendResponse({
+                success: false,
+                error: "Invalid message."
+            });
+
+            return;
+        }
+
+
+        // --------------------------------------------
+        // CHECK SERVER
+        // --------------------------------------------
+
+        if (message.type === "CHECK_SERVER") {
+
+            checkServer()
+                .then(sendResponse)
+                .catch(error => {
+
+                    sendResponse({
+                        success: false,
+                        error: error.message
+                    });
+
+                });
+
+            return true;
+        }
+
+
+        // --------------------------------------------
+        // RUN AGENT
+        // --------------------------------------------
+
+        if (message.type === "RUN_AGENT") {
+
+            runAgent(message)
+                .then(sendResponse)
+                .catch(error => {
+
+                    console.error(
+                        "Agent error:",
+                        error
+                    );
+
+                    sendResponse({
+                        success: false,
+                        error: error.message
+                    });
+
+                });
+
+            return true;
+        }
+
+
+        // --------------------------------------------
+        // EXECUTE ACTION
+        // --------------------------------------------
+
+        if (message.type === "EXECUTE_ACTION") {
+
+            executeAction(message.action)
+                .then(sendResponse)
+                .catch(error => {
+
+                    console.error(
+                        "Execution error:",
+                        error
+                    );
+
+                    sendResponse({
+                        success: false,
+                        error: error.message
+                    });
+
+                });
+
+            return true;
+        }
+
+
+        // --------------------------------------------
+        // UNKNOWN MESSAGE
+        // --------------------------------------------
+
         sendResponse({
             success: false,
-            error: "Invalid message."
+            error: "Unknown message type."
         });
-        return;
     }
-
-    // Check server status
-    if (message.type === "CHECK_SERVER") {
-        checkServer()
-            .then(sendResponse)
-            .catch(error => {
-                sendResponse({
-                    success: false,
-                    error: error.message
-                });
-            });
-
-        return true;
-    }
-
-
-    // Send sanitized context to PrivAgent server
-    if (message.type === "RUN_AGENT") {
-
-        runAgent(message)
-            .then(sendResponse)
-            .catch(error => {
-                console.error("Agent error:", error);
-
-                sendResponse({
-                    success: false,
-                    error: error.message
-                });
-            });
-
-        return true;
-    }
-
-
-    // Execute an approved action on the current tab
-    if (message.type === "EXECUTE_ACTION") {
-
-        executeAction(message.action)
-            .then(sendResponse)
-            .catch(error => {
-                console.error("Execution error:", error);
-
-                sendResponse({
-                    success: false,
-                    error: error.message
-                });
-            });
-
-        return true;
-    }
-
-
-    sendResponse({
-        success: false,
-        error: "Unknown message type."
-    });
-});
+);
 
 
 // --------------------------------------------------
@@ -92,13 +128,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
 async function checkServer() {
 
-    const response = await fetch(`${SERVER_URL}/health`);
+    const response =
+        await fetch(`${SERVER_URL}/health`);
 
     if (!response.ok) {
-        throw new Error(`Server returned ${response.status}`);
+
+        throw new Error(
+            `Server returned ${response.status}`
+        );
     }
 
-    const data = await response.json();
+    const data =
+        await response.json();
 
     return {
         success: true,
@@ -114,45 +155,86 @@ async function checkServer() {
 async function runAgent(message) {
 
     if (!message.command) {
-        throw new Error("Agent command is required.");
+
+        throw new Error(
+            "Agent command is required."
+        );
     }
+
 
     if (!message.sanitizedContext) {
-        throw new Error("Sanitized context is required.");
+
+        throw new Error(
+            "Sanitized context is required."
+        );
     }
 
 
-    // IMPORTANT:
-    // Only sanitized context should be sent to the server.
+    // --------------------------------------------
+    // IMPORTANT PRIVACY BOUNDARY
+    //
+    // Only the user's command and the
+    // privacy-sanitized page context are sent
+    // to the server.
+    // --------------------------------------------
+
     const context = {
-        ...message.sanitizedContext,
-        goal: message.command
+
+        command: message.command,
+
+        sanitized_context:
+            message.sanitizedContext
+
     };
 
 
-    const response = await fetch(`${SERVER_URL}/agent`, {
-        method: "POST",
+    console.log(
+        "Sending sanitized context to server."
+    );
 
-        headers: {
-            "Content-Type": "application/json"
-        },
 
-        body: JSON.stringify(context)
-    });
+    // --------------------------------------------
+    // SEND TO FASTAPI SERVER
+    // --------------------------------------------
 
+    const response =
+        await fetch(
+            `${SERVER_URL}/agent`,
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body: JSON.stringify(context)
+            }
+        );
+
+
+    // --------------------------------------------
+    // HANDLE SERVER ERROR
+    // --------------------------------------------
 
     if (!response.ok) {
 
-        let errorMessage = `Server returned ${response.status}`;
+        let errorMessage =
+            `Server returned ${response.status}`;
 
         try {
-            const errorData = await response.json();
+
+            const errorData =
+                await response.json();
 
             if (errorData.detail) {
-                errorMessage = errorData.detail;
+
+                errorMessage =
+                    errorData.detail;
             }
 
         } catch (_) {
+
             // Keep default error message
         }
 
@@ -160,28 +242,65 @@ async function runAgent(message) {
     }
 
 
-    const result = await response.json();
+    // --------------------------------------------
+    // READ SERVER RESPONSE
+    // --------------------------------------------
+
+    const result =
+        await response.json();
 
 
-    // Validate the server response before allowing execution.
+    console.log(
+        "Server response:",
+        result
+    );
+
+
+    // --------------------------------------------
+    // MAKE SURE ACTION EXISTS
+    // --------------------------------------------
+
     if (!result.action) {
-        throw new Error("Server returned no action.");
+
+        throw new Error(
+            "Server returned no action."
+        );
     }
 
 
-    if (!ALLOWED_ACTIONS.includes(result.action.action)) {
+    // --------------------------------------------
+    // VALIDATE ACTION TYPE
+    // --------------------------------------------
+
+    if (
+        !ALLOWED_ACTIONS.includes(
+            result.action.action
+        )
+    ) {
+
         throw new Error(
             `Blocked unsupported action: ${result.action.action}`
         );
     }
 
 
+    // --------------------------------------------
+    // RETURN APPROVED ACTION
+    // --------------------------------------------
+
     return {
+
         success: true,
-        message: result.message,
-        action: result.action,
+
+        message:
+            result.message || "",
+
+        action:
+            result.action,
+
         requiresConfirmation:
-            result.action.requires_confirmation === true
+            result.action
+                .requires_confirmation === true
     };
 }
 
@@ -193,40 +312,77 @@ async function runAgent(message) {
 async function executeAction(action) {
 
     if (!action || !action.action) {
-        throw new Error("Invalid action.");
+
+        throw new Error(
+            "Invalid action."
+        );
     }
 
 
-    if (!ALLOWED_ACTIONS.includes(action.action)) {
+    // --------------------------------------------
+    // CHECK ACTION TYPE
+    // --------------------------------------------
+
+    if (
+        !ALLOWED_ACTIONS.includes(
+            action.action
+        )
+    ) {
+
         throw new Error(
             `Blocked unsupported action: ${action.action}`
         );
     }
 
 
-    // Navigation is handled by the background service worker.
+    // --------------------------------------------
+    // NAVIGATE
+    // --------------------------------------------
+
     if (action.action === "navigate") {
 
         if (!action.url) {
-            throw new Error("Navigation URL is missing.");
+
+            throw new Error(
+                "Navigation URL is missing."
+            );
         }
 
-        if (!/^https?:\/\//i.test(action.url)) {
-            throw new Error("Only HTTP/HTTPS navigation is allowed.");
+
+        if (
+            !/^https?:\/\//i.test(
+                action.url
+            )
+        ) {
+
+            throw new Error(
+                "Only HTTP/HTTPS navigation is allowed."
+            );
         }
 
-        const tabs = await chrome.tabs.query({
-            active: true,
-            currentWindow: true
-        });
+
+        const tabs =
+            await chrome.tabs.query({
+                active: true,
+                currentWindow: true
+            });
+
 
         if (!tabs.length) {
-            throw new Error("No active tab found.");
+
+            throw new Error(
+                "No active tab found."
+            );
         }
 
-        await chrome.tabs.update(tabs[0].id, {
-            url: action.url
-        });
+
+        await chrome.tabs.update(
+            tabs[0].id,
+            {
+                url: action.url
+            }
+        );
+
 
         return {
             success: true,
@@ -235,8 +391,12 @@ async function executeAction(action) {
     }
 
 
-    // No browser action required.
+    // --------------------------------------------
+    // NO OP
+    // --------------------------------------------
+
     if (action.action === "noop") {
+
         return {
             success: true,
             action: "noop"
@@ -244,7 +404,12 @@ async function executeAction(action) {
     }
 
 
+    // --------------------------------------------
+    // WAIT
+    // --------------------------------------------
+
     if (action.action === "wait") {
+
         return {
             success: true,
             action: "wait"
@@ -252,27 +417,43 @@ async function executeAction(action) {
     }
 
 
-    // Other actions are sent to content.js.
-    const tabs = await chrome.tabs.query({
-        active: true,
-        currentWindow: true
-    });
+    // --------------------------------------------
+    // CLICK / TYPE / SCROLL
+    // --------------------------------------------
+
+    const tabs =
+        await chrome.tabs.query({
+            active: true,
+            currentWindow: true
+        });
+
 
     if (!tabs.length) {
-        throw new Error("No active tab found.");
+
+        throw new Error(
+            "No active tab found."
+        );
     }
 
 
-    const tabId = tabs[0].id;
+    const tabId =
+        tabs[0].id;
 
 
-    const result = await chrome.tabs.sendMessage(
-        tabId,
-        {
-            type: "EXECUTE_BROWSER_ACTION",
-            action
-        }
-    );
+    // Send the approved action
+    // to the content script.
+
+    const result =
+        await chrome.tabs.sendMessage(
+            tabId,
+            {
+                type:
+                    "EXECUTE_BROWSER_ACTION",
+
+                action:
+                    action
+            }
+        );
 
 
     return result;
