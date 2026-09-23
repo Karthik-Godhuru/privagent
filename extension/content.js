@@ -1,6 +1,10 @@
 function isVisible(element) {
-  const style = window.getComputedStyle(element);
-  const rectangle = element.getBoundingClientRect();
+
+  const style =
+    window.getComputedStyle(element);
+
+  const rectangle =
+    element.getBoundingClientRect();
 
   return (
     style.display !== "none" &&
@@ -11,64 +15,108 @@ function isVisible(element) {
   );
 }
 
+
 function extractPageInformation() {
-  const buttons = Array.from(
-    document.querySelectorAll("button")
-  )
-    .filter(isVisible)
-    .map((button) => ({
-      text: button.innerText.trim(),
-      id: button.id || "",
-      disabled: button.disabled
-    }));
 
-  const inputs = Array.from(
-    document.querySelectorAll("input, textarea, select")
-  )
-    .filter(isVisible)
-    .map((element) => ({
-      tag: element.tagName.toLowerCase(),
-      type: element.type || "",
-      id: element.id || "",
-      name: element.name || "",
-      placeholder: element.placeholder || "",
-      ariaLabel: element.getAttribute("aria-label") || "",
-      value: element.value || ""
-    }));
+  const buttons =
+    Array.from(
+      document.querySelectorAll("button")
+    )
+      .filter(isVisible)
+      .map((button) => ({
+        text:
+          button.innerText.trim(),
 
-  const links = Array.from(
-    document.querySelectorAll("a")
-  )
-    .filter(isVisible)
-    .map((link) => ({
-      text: link.innerText.trim(),
-      href: link.href
-    }));
+        id:
+          button.id || "",
 
-  const pageInformation = {
-    pageTitle: document.title,
-    url: window.location.href,
+        disabled:
+          button.disabled
+      }));
+
+
+  const inputs =
+    Array.from(
+      document.querySelectorAll(
+        "input, textarea, select"
+      )
+    )
+      .filter(isVisible)
+      .map((element) => ({
+        tag:
+          element.tagName.toLowerCase(),
+
+        type:
+          element.type || "",
+
+        id:
+          element.id || "",
+
+        name:
+          element.name || "",
+
+        placeholder:
+          element.placeholder || "",
+
+        ariaLabel:
+          element.getAttribute(
+            "aria-label"
+          ) || "",
+
+        value:
+          element.value || ""
+      }));
+
+
+  const links =
+    Array.from(
+      document.querySelectorAll("a")
+    )
+      .filter(isVisible)
+      .map((link) => ({
+        text:
+          link.innerText.trim(),
+
+        href:
+          link.href
+      }));
+
+
+  return {
+
+    pageTitle:
+      document.title,
+
+    url:
+      window.location.href,
+
     buttons,
-    inputs,
-    links,
-    visibleText: document.body.innerText
-      .replace(/\s+/g, " ")
-      .trim()
-      .substring(0, 5000)
-  };
 
-  return pageInformation;
+    inputs,
+
+    links,
+
+    visibleText:
+      document.body.innerText
+        .replace(/\s+/g, " ")
+        .trim()
+        .substring(0, 5000)
+  };
 }
+
 
 chrome.runtime.onMessage.addListener(
   (request, sender, sendResponse) => {
-    if (request.type === "EXTRACT_PAGE") {
-      const rawPageInformation = extractPageInformation();
 
-      const sanitizedPageInformation =
-        sanitizePageInformation(rawPageInformation);
+    if (
+      request.type ===
+      "EXTRACT_PAGE"
+    ) {
 
-      sendResponse(sanitizedPageInformation);
+      const pageInformation =
+        extractPageInformation();
+
+      sendResponse(pageInformation);
     }
   }
 );

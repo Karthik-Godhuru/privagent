@@ -1,13 +1,20 @@
 document
   .getElementById("analyzeButton")
   .addEventListener("click", async () => {
-    const statusElement = document.getElementById("status");
-    const resultElement = document.getElementById("result");
 
-    statusElement.textContent = "Analyzing page...";
+    const statusElement =
+      document.getElementById("status");
+
+    const resultElement =
+      document.getElementById("result");
+
+    statusElement.textContent =
+      "Analyzing page...";
+
     resultElement.textContent = "";
 
     try {
+
       const tabs = await chrome.tabs.query({
         active: true,
         currentWindow: true
@@ -20,21 +27,30 @@ document
       const activeTab = tabs[0];
 
       if (!activeTab.id) {
-        throw new Error("Active tab ID is unavailable.");
+        throw new Error(
+          "Active tab ID is unavailable."
+        );
       }
 
       let response;
 
+      // First, try to communicate with content.js
       try {
+
         response = await chrome.tabs.sendMessage(
           activeTab.id,
           {
             type: "EXTRACT_PAGE"
           }
         );
+
       } catch (connectionError) {
+
+        // content.js is not loaded.
+        // Load it into the current page.
+
         console.log(
-          "Content script was not connected. Injecting scripts now..."
+          "Content script not connected. Injecting content.js..."
         );
 
         await chrome.scripting.executeScript({
@@ -42,11 +58,11 @@ document
             tabId: activeTab.id
           },
           files: [
-            "privacy.js",
             "content.js"
           ]
         });
 
+        // Try again after injection
         response = await chrome.tabs.sendMessage(
           activeTab.id,
           {
@@ -56,17 +72,25 @@ document
       }
 
       if (!response) {
-        throw new Error("No response received from the webpage.");
+        throw new Error(
+          "No response received from webpage."
+        );
       }
 
-      displayAnalysisResult(response);
+      resultElement.textContent =
+        JSON.stringify(
+          response,
+          null,
+          2
+        );
 
       statusElement.textContent =
         "Analysis completed successfully.";
 
     } catch (error) {
+
       console.error(
-        "PRIVAGENT analysis error:",
+        "PrivAgent error:",
         error
       );
 
@@ -74,39 +98,7 @@ document
         "Analysis failed.";
 
       resultElement.textContent =
-        "Unable to analyze this page.\n\n" +
-        "Possible reasons:\n" +
-        "1. The current page is a restricted Chrome page.\n" +
-        "2. The extension needs to be reloaded.\n" +
-        "3. File access permission is disabled.\n\n" +
-        "Error: " +
+        "Error:\n\n" +
         error.message;
     }
   });
-
-function displayAnalysisResult(data) {
-  const resultElement = document.getElementById("result");
-
-  const sensitiveFindings =
-    Array.isArray(data.sensitiveFindings)
-      ? data.sensitiveFindings
-      : [];
-
-  const result = {
-    pageTitle: data.pageTitle || "",
-    url: data.url || "",
-    buttons: data.buttons || [],
-    inputs: data.inputs || [],
-    links: data.links || [],
-    visibleText: data.visibleText || "",
-    sensitiveDataCount:
-      data.sensitiveDataCount !== undefined
-        ? data.sensitiveDataCount
-        : sensitiveFindings.length,
-    sensitiveFindings: sensitiveFindings,
-    privacyReport: data.privacyReport || {}
-  };
-
-  resultElement.textContent =
-    JSON.stringify(result, null, 2);
-}
