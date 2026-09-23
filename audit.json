@@ -1,0 +1,40 @@
+[
+  {
+    "event_id": "evt_001",
+    "timestamp": "2026-09-22T15:17:00Z",
+    "trigger": "uncertain_sensitive_region",
+    "action_taken": "fail-closed",
+    "prevented_exposure": "potential_PII_address",
+    "user_override_requested": true
+  },
+  {
+    "event_id": "evt_002",
+    "timestamp": "2026-09-22T15:18:30Z",
+    "trigger": "local_vision_inference",
+    "action_taken": "semantic_masking",
+    "entities_protected": ["credit_card_number", "cvv"]
+  }
+]
+[
+  {
+    "event_id": "audit_59a8b1",
+    "timestamp": "2026-09-22T15:21:10Z",
+    "trigger_source": "local_vision_inference",
+    "detected_entities": ["credit_card_number", "cvv"],
+    "action_taken": "semantic_obfuscation",
+    "page_url": "shopping.html",
+    "user_notified": false,
+    "status": "success"
+  },
+  {
+    "event_id": "audit_59a8b2",
+    "timestamp": "2026-09-22T15:24:05Z",
+    "trigger_source": "sensitive_uncertainty",
+    "detected_entities": ["unknown_alphanumeric_string"],
+    "action_taken": "fail-closed",
+    "page_url": "booking.html",
+    "user_notified": true,
+    "status": "blocked_network_io",
+    "notes": "Uncertain region detected near passport entry field. Network request halted."
+  }
+]
