@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VOGUE & CO. | Premium Apparel</title>
+    <style>
+        /* CSS Reset & Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+        
+        body {
+            background-color: #fafafa;
+            color: #111;
+            line-height: 1.6;
+        }
+
+        /* Navigation / Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 5%;
+            background-color: #fff;
+            border-bottom: 1px solid #eaeaea;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        nav ul {
+            list-style: none;
+            display: flex;
+            gap: 30px;
+        }
+
+        nav a {
+            text-decoration: none;
+            color: #111;
+            font-weight: 500;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+
+        .user-actions {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 14px;
+        }
+
+        /* TARGET FOR PII REDACTION TEST */
+        .pii-data {
+            background-color: #f4f4f4;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            color: #555;
+            border: 1px dashed #ccc;
+        }
+
+        /* Hero Section - TARGET FOR FACE BLURRING TEST */
+        .hero {
+            height: 75vh;
+            background: linear-gradient(rgba(0, 0, 0, 0.2), rgba(0, 0, 0, 0.2)), 
+                        url('https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=1600&q=80') center/cover no-repeat;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            color: #fff;
+        }
+
+        .hero h1 {
+            font-size: 48px;
+            letter-spacing: 4px;
+            margin-bottom: 20px;
+            text-transform: uppercase;
+        }
+
+        .btn-primary {
+            padding: 15px 40px;
+            background-color: #111;
+            color: #fff;
+            text-decoration: none;
+            text-transform: uppercase;
+            font-size: 14px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            border: none;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        .btn-primary:hover {
+            background-color: #444;
+        }
+
+        /* Product Grid - TARGET FOR OCR & STRUCTURED CLICKS */
+        .products {
+            padding: 60px 5%;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 28px;
+            margin-bottom: 40px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 40px;
+        }
+
+        .card {
+            background: #fff;
+            padding-bottom: 20px;
+            transition: transform 0.2s;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+        }
+
+        .card img {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+        }
+
+        .card-info {
+            padding: 15px 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .card-price {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .btn-add {
+            margin: 15px 15px 0;
+            width: calc(100% - 30px);
+            padding: 10px;
+            background-color: #fff;
+            color: #111;
+            border: 1px solid #111;
+            text-transform: uppercase;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-add:hover {
+            background-color: #111;
+            color: #fff;
+        }
+
+        /* Footer - TARGET FOR INPUT MASKING */
+        footer {
+            background-color: #111;
+            color: #fff;
+            padding: 60px 5%;
+            text-align: center;
+        }
+
+        .newsletter {
+            margin-bottom: 30px;
+        }
+
+        .newsletter input {
+            padding: 12px 20px;
+            width: 300px;
+            border: 1px solid #444;
+            background: #222;
+            color: #fff;
+            font-size: 14px;
+            outline: none;
+        }
+
+        .newsletter button {
+            padding: 12px 30px;
+            background: #fff;
+            color: #111;
+            border: none;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo">VOGUE & CO.</div>
+        <nav>
+            <ul>
+                <li><a href="#">New In</a></li>
+                <li><a href="#">Women</a></li>
+                <li><a href="#">Men</a></li>
+                <li><a href="#">Accessories</a></li>
+            </ul>
+        </nav>
+        <div class="user-actions">
+            <!-- PII Target for PrivAgent to sanitize -->
+            <div class="pii-data">
+                <span id="user-name">Welcome, Priya Sharma</span> | 
+                <span id="user-email">priya.sharma1998@gmail.com</span>
+            </div>
+            <a href="#">Cart (2)</a>
+        </div>
+    </header>
+
+    <section class="hero">
+        <!-- Hero image contains a human face for the Vision model to detect and redact -->
+        <h1>The Fall Collection</h1>
+        <button class="btn-primary" id="shop-now-btn">Shop Now</button>
+    </section>
+
+    <section class="products">
+        <h2 class="section-title">Trending Now</h2>
+        <div class="grid">
+            
+            <div class="card">
+                <img src="https://images.unsplash.com/photo-1591369822096-fb14ce694e38?auto=format&fit=crop&w=600&q=80" alt="Wool Blend Coat">
+                <div class="card-info">
+                    <div class="card-title">Tailored Wool Coat</div>
+                    <div class="card-price">₹8,990</div>
+                </div>
+                <button class="btn-add">Add to Bag</button>
+            </div>
+
+            <div class="card">
+                <img src="https://images.unsplash.com/photo-1584273143981-41c073dfe8f8?auto=format&fit=crop&w=600&q=80" alt="Silk Blouse">
+                <div class="card-info">
+                    <div class="card-title">Draped Silk Blouse</div>
+                    <div class="card-price">₹3,490</div>
+                </div>
+                <button class="btn-add">Add to Bag</button>
+            </div>
+
+            <div class="card">
+                <img src="https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?auto=format&fit=crop&w=600&q=80" alt="Leather Boots">
+                <div class="card-info">
+                    <div class="card-title">Chelsea Leather Boots</div>
+                    <div class="card-price">₹5,990</div>
+                </div>
+                <button class="btn-add">Add to Bag</button>
+            </div>
+
+        </div>
+    </section>
+
+    <footer>
+        <div class="newsletter">
+            <h3 style="margin-bottom: 15px; font-weight: 400;">Join our newsletter</h3>
+            <!-- Input field for the agent to potentially type into, testing sensitive data entry masking -->
+            <input type="email" placeholder="Enter your email address" id="newsletter-input">
+            <button id="subscribe-btn">Subscribe</button>
+        </div>
+        <p style="font-size: 12px; color: #888;">&copy; 2026 VOGUE & CO. All rights reserved.</p>
+    </footer>
+
+</body>
+</html>
