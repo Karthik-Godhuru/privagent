@@ -1,0 +1,36 @@
+{
+  "agent_id": "privagent-v1-node",
+  "sanitised": true,
+  "privacy_level": "strict",
+  "session": {
+    "session_id": "sess_998124a",
+    "retention_mode": "ephemeral",
+    "allowed_pii_types": []
+  },
+  "user_preferences": {
+    "language": "en-US",
+    "theme": "dark",
+    "time_zone": "UTC"
+  },
+  "memory_store": [
+    {
+      "id": "mem_001",
+      "timestamp": "2026-09-22T12:00:00Z",
+      "type": "fact",
+      "key": "preferred_meeting_window",
+      "value": "14:00-16:00 UTC"
+    },
+    {
+      "id": "mem_002",
+      "timestamp": "2026-09-22T12:05:00Z",
+      "type": "task",
+      "key": "current_project",
+      "value": "Database migration audit"
+    }
+  ],
+  "active_tools": [
+    "local_calendar_query",
+    "code_analyzer",
+    "document_summarizer"
+  ]
+}
