@@ -3,26 +3,41 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>PRIVAGENT</title>
+
   <link rel="stylesheet" href="styles.css">
 </head>
+
 <body>
+
   <h2>PRIVAGENT</h2>
 
-  <p>On-device visual perception prototype</p>
+  <p>Privacy-Preserving Browser AI Agent</p>
+
+  <label for="command">What should PrivAgent do?</label>
+
+  <input
+    id="command"
+    type="text"
+    placeholder="Example: Click View Statement"
+  >
+
+  <button id="runButton">
+    Run Agent
+  </button>
 
   <button id="analyzeButton">
     Analyze Page
   </button>
 
-  <p id="status">
-    Ready
-  </p>
+  <p id="status">Ready</p>
 
-  <h3>Analysis Result</h3>
+  <h3>Result</h3>
 
-  <pre id="result">No analysis performed yet.</pre>
+  <pre id="result">No action performed yet.</pre>
 
   <script src="popup.js"></script>
+
 </body>
 </html>
