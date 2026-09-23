@@ -1,0 +1,77 @@
+[
+  {
+    "event_id": "audit_59a8b1",
+    "timestamp": "2026-09-22T15:21:10Z",
+    "trigger_source": "local_vision_inference",
+    "detected_entities": ["credit_card_number", "cvv"],
+    "action_taken": "semantic_obfuscation",
+    "page_url": "shopping.html",
+    "user_notified": false,
+    "status": "success"
+  },
+  {
+    "event_id": "audit_59a8b2",
+    "timestamp": "2026-09-22T15:24:05Z",
+    "trigger_source": "sensitive_uncertainty",
+    "detected_entities": ["unknown_alphanumeric_string"],
+    "action_taken": "fail-closed",
+    "page_url": "booking.html",
+    "user_notified": true,
+    "status": "blocked_network_io",
+    "notes": "Uncertain region detected near passport entry field. Network request halted."
+  }
+]
+import json
+from pydantic import BaseModel, Field, ValidationError
+from typing import List, Dict, Optional
+
+class BoundingBox(BaseModel):
+    x: int
+    y: int
+    w: int
+    h: int
+
+class SafeLabel(BaseModel):
+    id: str
+    text: str
+    role: str
+    bounding_box: BoundingBox
+
+class RedactedRegion(BaseModel):
+    id: str
+    entity_type: str
+    obfuscation_method: str
+    bounding_box: BoundingBox
+    semantic_tag: str
+
+class SecurityValidation(BaseModel):
+    raw_pixels_transmitted: bool = Field(False, description="Must always be false")
+    pii_detected_and_masked: bool
+    fail_closed_triggered: bool
+
+class SanitizedState(BaseModel):
+    metadata: Dict
+    safe_labels: List[SafeLabel]
+    redacted_regions: List[RedactedRegion]
+    action_candidates: List[Dict]
+    security_validation: SecurityValidation
+
+def validate_payload(file_path: str):
+    """Enforces the privacy boundary before server processing."""
+    with open(file_path, 'r') as f:
+        data = json.load(f)
+    
+    try:
+        validated_state = SanitizedState(**data)
+        if validated_state.security_validation.raw_pixels_transmitted:
+            raise ValueError("CRITICAL PRIVACY BREACH: Raw pixels flagged in payload.")
+        print("Payload validated. Minimum necessary context preserved.")
+        return validated_state
+    except ValidationError as e:
+        print(f"Validation Error: {e}")
+        # Trigger fail-closed protocol
+        return None
+
+if __name__ == "__main__":
+    # Test the mock data
+    validate_payload("sanitized_state.json")
