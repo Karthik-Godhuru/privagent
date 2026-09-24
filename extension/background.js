@@ -10,24 +10,23 @@ const ALLOWED_ACTIONS = [
 ];
 
 
-// --------------------------------------------------
-// EXTENSION INSTALLED
-// --------------------------------------------------
+// ==================================================
+// EXTENSION INSTALL
+// ==================================================
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log("PrivAgent installed successfully.");
 });
 
 
-// --------------------------------------------------
+// ==================================================
 // MESSAGE HANDLER
-// --------------------------------------------------
+// ==================================================
 
 chrome.runtime.onMessage.addListener(
     (message, sender, sendResponse) => {
 
         if (!message || !message.type) {
-
             sendResponse({
                 success: false,
                 error: "Invalid message."
@@ -37,9 +36,9 @@ chrome.runtime.onMessage.addListener(
         }
 
 
-        // --------------------------------------------
+        // ------------------------------------------
         // CHECK SERVER
-        // --------------------------------------------
+        // ------------------------------------------
 
         if (message.type === "CHECK_SERVER") {
 
@@ -47,20 +46,24 @@ chrome.runtime.onMessage.addListener(
                 .then(sendResponse)
                 .catch(error => {
 
+                    console.error(
+                        "Server check error:",
+                        error
+                    );
+
                     sendResponse({
                         success: false,
                         error: error.message
                     });
-
                 });
 
             return true;
         }
 
 
-        // --------------------------------------------
+        // ------------------------------------------
         // RUN AGENT
-        // --------------------------------------------
+        // ------------------------------------------
 
         if (message.type === "RUN_AGENT") {
 
@@ -77,16 +80,15 @@ chrome.runtime.onMessage.addListener(
                         success: false,
                         error: error.message
                     });
-
                 });
 
             return true;
         }
 
 
-        // --------------------------------------------
+        // ------------------------------------------
         // EXECUTE ACTION
-        // --------------------------------------------
+        // ------------------------------------------
 
         if (message.type === "EXECUTE_ACTION") {
 
@@ -103,16 +105,11 @@ chrome.runtime.onMessage.addListener(
                         success: false,
                         error: error.message
                     });
-
                 });
 
             return true;
         }
 
-
-        // --------------------------------------------
-        // UNKNOWN MESSAGE
-        // --------------------------------------------
 
         sendResponse({
             success: false,
@@ -122,24 +119,26 @@ chrome.runtime.onMessage.addListener(
 );
 
 
-// --------------------------------------------------
+// ==================================================
 // SERVER HEALTH CHECK
-// --------------------------------------------------
+// ==================================================
 
 async function checkServer() {
 
     const response =
         await fetch(`${SERVER_URL}/health`);
 
-    if (!response.ok) {
 
+    if (!response.ok) {
         throw new Error(
             `Server returned ${response.status}`
         );
     }
 
+
     const data =
         await response.json();
+
 
     return {
         success: true,
@@ -148,13 +147,20 @@ async function checkServer() {
 }
 
 
-// --------------------------------------------------
-// RUN AGENT
-// --------------------------------------------------
+// ==================================================
+// RUN PRIVAGENT
+// ==================================================
 
 async function runAgent(message) {
 
-    if (!message.command) {
+    // ----------------------------------------------
+    // VALIDATE COMMAND
+    // ----------------------------------------------
+
+    if (
+        !message.command ||
+        typeof message.command !== "string"
+    ) {
 
         throw new Error(
             "Agent command is required."
@@ -162,7 +168,14 @@ async function runAgent(message) {
     }
 
 
-    if (!message.sanitizedContext) {
+    // ----------------------------------------------
+    // VALIDATE SANITIZED CONTEXT
+    // ----------------------------------------------
+
+    if (
+        !message.sanitizedContext ||
+        typeof message.sanitizedContext !== "object"
+    ) {
 
         throw new Error(
             "Sanitized context is required."
@@ -170,37 +183,101 @@ async function runAgent(message) {
     }
 
 
-    // --------------------------------------------
-    // IMPORTANT PRIVACY BOUNDARY
-    //
-    // Only the user's command and the
-    // privacy-sanitized page context are sent
-    // to the server.
-    // --------------------------------------------
+    const page =
+        message.sanitizedContext;
+
+
+    // ==================================================
+    // CONVERT PAGE ELEMENTS INTO SERVER FORMAT
+    // ==================================================
+
+    const visibleControls =
+        Array.isArray(page.elements)
+            ? page.elements.map(element => {
+
+                return {
+
+                    type:
+                        element.type ||
+                        "unknown",
+
+                    label:
+                        element.label ||
+                        "",
+
+                    selector:
+                        element.selector ||
+                        null,
+
+                    enabled:
+                        element.enabled !== false
+                };
+
+            })
+            : [];
+
+
+    // ==================================================
+    // SAFE LABELS
+    // ==================================================
+
+    const safeLabels = [];
+
+
+    if (page.title) {
+
+        safeLabels.push({
+
+            text:
+                page.title,
+
+            role:
+                "page_title",
+
+            selector:
+                null
+        });
+    }
+
+
+    // ==================================================
+    // BUILD EXACT SanitizedContext EXPECTED BY FASTAPI
+    // ==================================================
 
     const context = {
 
-        command: message.command,
+        goal:
+            message.command.trim(),
 
-        sanitized_context:
-            message.sanitizedContext
+        visible_controls:
+            visibleControls,
 
+        safe_labels:
+            safeLabels,
+
+        redacted_regions:
+            [],
+
+        action_candidates:
+            []
     };
 
 
     console.log(
-        "Sending sanitized context to server."
+        "PrivAgent sanitized request:",
+        context
     );
 
 
-    // --------------------------------------------
-    // SEND TO FASTAPI SERVER
-    // --------------------------------------------
+    // ==================================================
+    // SEND SANITIZED CONTEXT TO SERVER
+    // ==================================================
 
     const response =
         await fetch(
             `${SERVER_URL}/agent`,
             {
+
                 method: "POST",
 
                 headers: {
@@ -208,57 +285,81 @@ async function runAgent(message) {
                         "application/json"
                 },
 
-                body: JSON.stringify(context)
+                body:
+                    JSON.stringify(context)
             }
         );
 
 
-    // --------------------------------------------
-    // HANDLE SERVER ERROR
-    // --------------------------------------------
+    // ==================================================
+    // HANDLE SERVER ERRORS
+    // ==================================================
 
     if (!response.ok) {
 
         let errorMessage =
             `Server returned ${response.status}`;
 
+
         try {
 
             const errorData =
                 await response.json();
 
+
             if (errorData.detail) {
 
-                errorMessage =
-                    errorData.detail;
+                if (
+                    typeof errorData.detail ===
+                    "string"
+                ) {
+
+                    errorMessage =
+                        errorData.detail;
+
+                } else {
+
+                    errorMessage =
+                        JSON.stringify(
+                            errorData.detail,
+                            null,
+                            2
+                        );
+                }
             }
 
-        } catch (_) {
+        } catch (error) {
 
-            // Keep default error message
+            console.error(
+                "Could not parse server error:",
+                error
+            );
         }
 
-        throw new Error(errorMessage);
+
+        throw new Error(
+            errorMessage
+        );
     }
 
 
-    // --------------------------------------------
+    // ==================================================
     // READ SERVER RESPONSE
-    // --------------------------------------------
+    // ==================================================
 
     const result =
         await response.json();
 
 
     console.log(
-        "Server response:",
+        "PrivAgent server response:",
         result
     );
 
 
-    // --------------------------------------------
-    // MAKE SURE ACTION EXISTS
-    // --------------------------------------------
+    // ==================================================
+    // VALIDATE SERVER RESPONSE
+    // ==================================================
 
     if (!result.action) {
 
@@ -268,25 +369,25 @@ async function runAgent(message) {
     }
 
 
-    // --------------------------------------------
-    // VALIDATE ACTION TYPE
-    // --------------------------------------------
-
     if (
+        !result.action.action ||
         !ALLOWED_ACTIONS.includes(
             result.action.action
         )
     ) {
 
         throw new Error(
-            `Blocked unsupported action: ${result.action.action}`
+            `Blocked unsupported action: ${
+                result.action.action ||
+                "unknown"
+            }`
         );
     }
 
 
-    // --------------------------------------------
-    // RETURN APPROVED ACTION
-    // --------------------------------------------
+    // ==================================================
+    // RETURN APPROVED ACTION TO POPUP
+    // ==================================================
 
     return {
 
@@ -305,23 +406,26 @@ async function runAgent(message) {
 }
 
 
-// --------------------------------------------------
+// ==================================================
 // EXECUTE APPROVED ACTION
-// --------------------------------------------------
+// ==================================================
 
 async function executeAction(action) {
 
-    if (!action || !action.action) {
+    // ----------------------------------------------
+    // VALIDATE ACTION
+    // ----------------------------------------------
+
+    if (
+        !action ||
+        !action.action
+    ) {
 
         throw new Error(
             "Invalid action."
         );
     }
 
-
-    // --------------------------------------------
-    // CHECK ACTION TYPE
-    // --------------------------------------------
 
     if (
         !ALLOWED_ACTIONS.includes(
@@ -335,9 +439,9 @@ async function executeAction(action) {
     }
 
 
-    // --------------------------------------------
-    // NAVIGATE
-    // --------------------------------------------
+    // ==================================================
+    // NAVIGATION
+    // ==================================================
 
     if (action.action === "navigate") {
 
@@ -379,7 +483,8 @@ async function executeAction(action) {
         await chrome.tabs.update(
             tabs[0].id,
             {
-                url: action.url
+                url:
+                    action.url
             }
         );
 
@@ -391,9 +496,9 @@ async function executeAction(action) {
     }
 
 
-    // --------------------------------------------
-    // NO OP
-    // --------------------------------------------
+    // ==================================================
+    // NOOP
+    // ==================================================
 
     if (action.action === "noop") {
 
@@ -404,9 +509,9 @@ async function executeAction(action) {
     }
 
 
-    // --------------------------------------------
+    // ==================================================
     // WAIT
-    // --------------------------------------------
+    // ==================================================
 
     if (action.action === "wait") {
 
@@ -417,9 +522,9 @@ async function executeAction(action) {
     }
 
 
-    // --------------------------------------------
-    // CLICK / TYPE / SCROLL
-    // --------------------------------------------
+    // ==================================================
+    // FIND ACTIVE TAB
+    // ==================================================
 
     const tabs =
         await chrome.tabs.query({
@@ -440,13 +545,15 @@ async function executeAction(action) {
         tabs[0].id;
 
 
-    // Send the approved action
-    // to the content script.
+    // ==================================================
+    // SEND ACTION TO CONTENT.JS
+    // ==================================================
 
     const result =
         await chrome.tabs.sendMessage(
             tabId,
             {
+
                 type:
                     "EXECUTE_BROWSER_ACTION",
 
@@ -454,6 +561,23 @@ async function executeAction(action) {
                     action
             }
         );
+
+
+    if (!result) {
+
+        throw new Error(
+            "No response from browser executor."
+        );
+    }
+
+
+    if (result.success === false) {
+
+        throw new Error(
+            result.error ||
+            "Browser action failed."
+        );
+    }
 
 
     return result;
