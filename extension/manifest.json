@@ -28,6 +28,7 @@
       "matches": ["<all_urls>"],
       "js": [
         "privacy-gate.js",
+        "executor.js",
         "content.js"
       ]
     }
