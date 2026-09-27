@@ -1,5 +1,8 @@
 const SERVER_URL = "http://127.0.0.1:8000";
 
+const MAX_STEPS = 6;
+const STEP_DELAY_MS = 600;
+
 const ALLOWED_ACTIONS = [
     "click",
     "type",
@@ -581,4 +584,52 @@ async function executeAction(action) {
 
 
     return result;
+}
+// ==================================================
+// GET FRESH SANITIZED PAGE STATE
+// ==================================================
+
+async function getFreshPageState() {
+
+    const tabs = await chrome.tabs.query({
+        active: true,
+        currentWindow: true
+    });
+
+    if (!tabs.length) {
+        throw new Error("No active tab found.");
+    }
+
+    const response = await chrome.tabs.sendMessage(
+        tabs[0].id,
+        {
+            type: "GET_PAGE_STATE"
+        }
+    );
+
+    if (!response || response.success === false) {
+        throw new Error(
+            response?.error ||
+            "Could not capture page state."
+        );
+    }
+
+    if (!response.pageState) {
+        throw new Error(
+            "Content script returned no page state."
+        );
+    }
+
+    return response.pageState;
+}
+
+
+// ==================================================
+// SMALL DELAY BETWEEN AGENT STEPS
+// ==================================================
+
+function delay(ms) {
+    return new Promise(resolve => {
+        setTimeout(resolve, ms);
+    });
 }
