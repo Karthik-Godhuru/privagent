@@ -51,17 +51,45 @@ function findInteractiveElements() {
 
     return Array.from(elements).map((element, index) => {
 
+        let label = "";
+
+        // 1. Associated HTML <label>
+        if (element.id) {
+
+            const associatedLabel = document.querySelector(
+                `label[for="${CSS.escape(element.id)}"]`
+            );
+
+            if (associatedLabel) {
+                label = associatedLabel.innerText.trim();
+            }
+        }
+
+        // 2. Parent label
+        if (!label) {
+
+            const parentLabel = element.closest("label");
+
+            if (parentLabel) {
+                label = parentLabel.innerText.trim();
+            }
+        }
+
+        // 3. Accessibility label
+        if (!label) {
+            label =
+                element.getAttribute("aria-label") ||
+                element.getAttribute("placeholder") ||
+                element.innerText ||
+                "";
+        }
+
         return {
             id: `element_${index}`,
 
             type: element.tagName.toLowerCase(),
 
-            label:
-                element.innerText ||
-                element.getAttribute("aria-label") ||
-                element.getAttribute("placeholder") ||
-                element.value ||
-                "",
+            label: label.trim(),
 
             selector: createSelector(element),
 

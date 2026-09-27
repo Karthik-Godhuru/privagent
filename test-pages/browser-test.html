@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <title>PrivAgent Browser Test</title>
+
+  <style>
+    body {
+      min-height: 2000px;
+      font-family: Arial, sans-serif;
+      padding: 30px;
+    }
+
+    section {
+      margin-bottom: 30px;
+      padding: 20px;
+      border: 1px solid #ccc;
+    }
+  </style>
+</head>
+
+<body>
+
+  <h1>PrivAgent Browser Action Test</h1>
+
+  <section>
+    <h2>Click Test</h2>
+
+    <button id="clickButton">
+      Click Me
+    </button>
+
+    <p id="clickResult">
+      Not clicked yet
+    </p>
+  </section>
+
+
+  <section>
+    <h2>Type Test</h2>
+
+    <label for="nameInput">
+      Your Name
+    </label>
+
+    <input
+      id="nameInput"
+      type="text"
+      placeholder="Enter your name"
+    />
+  </section>
+
+
+  <section>
+    <h2>Select Test</h2>
+
+    <label for="accountType">
+      Account Type
+    </label>
+
+    <select id="accountType">
+
+      <option value="savings">
+        Savings Account
+      </option>
+
+      <option value="current">
+        Current Account
+      </option>
+
+      <option value="student">
+        Student Account
+      </option>
+
+    </select>
+  </section>
+
+
+  <section>
+    <h2>Wait Test</h2>
+
+    <p id="waitResult">
+      Waiting...
+    </p>
+  </section>
+
+
+  <section>
+
+    <h2>Navigate Test</h2>
+
+    <a href="browser-navigation.html">
+      Navigation Test Page
+    </a>
+
+  </section>
+
+
+  <section>
+
+    <h2>Scroll Test</h2>
+
+    <p>
+      Scroll down to test the scroll action.
+    </p>
+
+    <div style="height: 1200px;"></div>
+
+    <h2 id="bottom">
+      Bottom of Test Page
+    </h2>
+
+  </section>
+
+
+  <script>
+
+    document
+      .getElementById("clickButton")
+      .addEventListener("click", () => {
+
+        document
+          .getElementById("clickResult")
+          .textContent =
+          "Button clicked successfully!";
+
+      });
+
+  </script>
+
+</body>
+
+</html>

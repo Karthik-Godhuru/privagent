@@ -135,28 +135,6 @@ class ExtensionPageState(BaseModel):
 class AgentRequest(BaseModel):
     """
     Accepts the format sent by the Chrome extension.
-
-    Supported formats:
-
-    1. {
-        "goal": "...",
-        "title": "...",
-        "url": "...",
-        "text": "...",
-        "elements": [...]
-    }
-
-    2. {
-        "command": "...",
-        "sanitizedContext": {
-            "title": "...",
-            "url": "...",
-            "text": "...",
-            "elements": [...]
-        }
-    }
-
-    3. Direct structured sanitized context.
     """
 
     goal: Optional[str] = None
@@ -255,12 +233,31 @@ SENSITIVE_KEYWORDS = [
 def contains_sensitive_text(text: str) -> bool:
     """
     Basic server-side fail-closed privacy check.
+
+    Redaction markers produced by the local privacy gate are safe
+    and should not be treated as actual sensitive information.
     """
 
     if not text:
         return False
 
-    lower_text = text.lower()
+    sanitized_text = text
+
+    redaction_markers = [
+        "[EMAIL_REDACTED]",
+        "[PHONE_REDACTED]",
+        "[AADHAAR_REDACTED]",
+        "[PAN_REDACTED]",
+        "[CARD_REDACTED]",
+    ]
+
+    for marker in redaction_markers:
+        sanitized_text = sanitized_text.replace(
+            marker,
+            ""
+        )
+
+    lower_text = sanitized_text.lower()
 
     for keyword in SENSITIVE_KEYWORDS:
         if keyword in lower_text:
@@ -278,7 +275,10 @@ def validate_context(context: SanitizedContext) -> None:
     if contains_sensitive_text(context.goal):
         raise HTTPException(
             status_code=400,
-            detail="Sensitive information detected in goal. Request rejected.",
+            detail=(
+                "Sensitive information detected in goal. "
+                "Request rejected."
+            ),
         )
 
     for label in context.safe_labels:
@@ -286,15 +286,23 @@ def validate_context(context: SanitizedContext) -> None:
         if contains_sensitive_text(label.text):
             raise HTTPException(
                 status_code=400,
-                detail="Sensitive information detected in sanitized labels.",
+                detail=(
+                    "Sensitive information detected "
+                    "in sanitized labels."
+                ),
             )
 
     for control in context.visible_controls:
 
-        if control.label and contains_sensitive_text(control.label):
+        if control.label and contains_sensitive_text(
+            control.label
+        ):
             raise HTTPException(
                 status_code=400,
-                detail="Sensitive information detected in browser controls.",
+                detail=(
+                    "Sensitive information detected "
+                    "in browser controls."
+                ),
             )
 
 
@@ -302,7 +310,10 @@ def validate_context(context: SanitizedContext) -> None:
 # NORMALIZE EXTENSION REQUEST
 # ============================================================
 
-def normalize_request(request: AgentRequest) -> SanitizedContext:
+def normalize_request(
+    request: AgentRequest
+) -> SanitizedContext:
+
     """
     Converts Chrome extension page-state data into the
     server's internal SanitizedContext format.
@@ -369,10 +380,13 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
     structured_controls = request.visible_controls
 
     if structured_controls is None:
-        structured_controls = source.get("visible_controls")
+        structured_controls = source.get(
+            "visible_controls"
+        )
 
 
     if structured_controls:
+
         visible_controls = [
             control
             if isinstance(control, VisibleControl)
@@ -386,13 +400,19 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
         # 5. Convert extension elements -> visible_controls
         # ----------------------------------------------------
 
-        raw_elements = source.get("elements", [])
+        raw_elements = source.get(
+            "elements",
+            []
+        )
 
         visible_controls = []
 
         for raw in raw_elements:
 
-            if isinstance(raw, ExtensionElement):
+            if isinstance(
+                raw,
+                ExtensionElement
+            ):
                 element = raw
 
             else:
@@ -401,7 +421,10 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
                     type=raw.get("type", ""),
                     label=raw.get("label", ""),
                     selector=raw.get("selector"),
-                    enabled=raw.get("enabled", True),
+                    enabled=raw.get(
+                        "enabled",
+                        True
+                    ),
                 )
 
             visible_controls.append(
@@ -421,11 +444,13 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
     safe_labels = request.safe_labels
 
     if safe_labels is None:
+
         safe_labels = []
 
         for control in visible_controls:
 
             if control.label:
+
                 safe_labels.append(
                     SafeLabel(
                         text=control.label,
@@ -441,7 +466,10 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
 
     redacted_regions = (
         request.redacted_regions
-        or source.get("redacted_regions", [])
+        or source.get(
+            "redacted_regions",
+            []
+        )
         or []
     )
 
@@ -452,7 +480,10 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
 
     action_candidates = (
         request.action_candidates
-        or source.get("action_candidates", [])
+        or source.get(
+            "action_candidates",
+            []
+        )
         or []
     )
 
@@ -478,11 +509,15 @@ def validate_action(action: Action) -> Action:
     if action.action == "click":
 
         if not action.selector and (
-            action.x is None or action.y is None
+            action.x is None
+            or action.y is None
         ):
             raise HTTPException(
                 status_code=400,
-                detail="Click requires selector or coordinates.",
+                detail=(
+                    "Click requires selector "
+                    "or coordinates."
+                ),
             )
 
 
@@ -491,13 +526,19 @@ def validate_action(action: Action) -> Action:
         if not action.selector:
             raise HTTPException(
                 status_code=400,
-                detail="Type action requires a selector.",
+                detail=(
+                    "Type action requires "
+                    "a selector."
+                ),
             )
 
         if action.value is None:
             raise HTTPException(
                 status_code=400,
-                detail="Type action requires a value.",
+                detail=(
+                    "Type action requires "
+                    "a value."
+                ),
             )
 
 
@@ -506,7 +547,10 @@ def validate_action(action: Action) -> Action:
         if not action.url:
             raise HTTPException(
                 status_code=400,
-                detail="Navigate action requires a URL.",
+                detail=(
+                    "Navigate action requires "
+                    "a URL."
+                ),
             )
 
 
@@ -515,7 +559,10 @@ def validate_action(action: Action) -> Action:
         if action.amount is None:
             raise HTTPException(
                 status_code=400,
-                detail="Scroll action requires an amount.",
+                detail=(
+                    "Scroll action requires "
+                    "an amount."
+                ),
             )
 
 
@@ -526,7 +573,10 @@ def validate_action(action: Action) -> Action:
 # SIMPLE LOCAL PLANNER
 # ============================================================
 
-def local_planner(context: SanitizedContext) -> Action:
+def local_planner(
+    context: SanitizedContext
+) -> Action:
+
     """
     Temporary rule-based planner.
 
@@ -548,7 +598,6 @@ def local_planner(context: SanitizedContext) -> Action:
         or "open" in goal
     ):
 
-        # Remove common command words.
         command_words = {
             "click",
             "press",
@@ -562,13 +611,18 @@ def local_planner(context: SanitizedContext) -> Action:
 
         target_words = [
             word
-            for word in goal
-            .replace(",", " ")
-            .replace(".", " ")
-            .split()
+            for word in (
+                goal
+                .replace(",", " ")
+                .replace(".", " ")
+                .split()
+            )
             if word not in command_words
         ]
 
+        target_phrase = " ".join(
+            target_words
+        )
 
         # ----------------------------------------------------
         # Exact / partial label matching
@@ -579,16 +633,20 @@ def local_planner(context: SanitizedContext) -> Action:
             if not control.enabled:
                 continue
 
-            label = (control.label or "").lower().strip()
+            label = (
+                control.label or ""
+            ).lower().strip()
 
             if not label:
                 continue
 
 
             # Full phrase match
-            target_phrase = " ".join(target_words)
 
-            if target_phrase and target_phrase in label:
+            if (
+                target_phrase
+                and target_phrase in label
+            ):
 
                 return Action(
                     action="click",
@@ -598,6 +656,7 @@ def local_planner(context: SanitizedContext) -> Action:
 
 
             # Word match
+
             for word in target_words:
 
                 if len(word) < 2:
@@ -610,6 +669,109 @@ def local_planner(context: SanitizedContext) -> Action:
                         selector=control.selector,
                         requires_confirmation=False,
                     )
+
+
+    # ========================================================
+    # TYPE / ENTER / FILL TEXT
+    # ========================================================
+
+    if (
+        goal.startswith("type ")
+        or goal.startswith("enter ")
+        or goal.startswith("fill ")
+    ):
+
+        instruction = goal
+
+        # Remove command word
+
+        for prefix in [
+            "type ",
+            "enter ",
+            "fill ",
+        ]:
+
+            if instruction.startswith(prefix):
+
+                instruction = instruction[
+                    len(prefix):
+                ]
+
+                break
+
+
+        # ----------------------------------------------------
+        # Supported forms:
+        #
+        # type hello into customer name
+        # enter hello into customer name
+        # fill hello in customer name
+        # ----------------------------------------------------
+
+        separator = None
+
+        if " into " in instruction:
+
+            separator = " into "
+
+        elif " in " in instruction:
+
+            separator = " in "
+
+
+        if separator:
+
+            value_text, target_text = (
+                instruction.split(
+                    separator,
+                    1
+                )
+            )
+
+            value_text = value_text.strip()
+            target_text = target_text.strip()
+
+
+            if value_text and target_text:
+
+                # --------------------------------------------
+                # Find matching input using SAFE LABEL ONLY.
+                #
+                # The server never needs the actual
+                # current value of the input.
+                # --------------------------------------------
+
+                for control in (
+                    context.visible_controls
+                ):
+
+                    if not control.enabled:
+                        continue
+
+                    label = (
+                        control.label or ""
+                    ).lower().strip()
+
+                    if not label:
+                        continue
+
+
+                    if (
+                        target_text.lower()
+                        in label
+                    ):
+
+                        if control.type in {
+                            "input",
+                            "textarea",
+                        }:
+
+                            return Action(
+                                action="type",
+                                selector=control.selector,
+                                value=value_text,
+                                requires_confirmation=False,
+                            )
 
 
     # ========================================================
@@ -686,7 +848,9 @@ def local_planner(context: SanitizedContext) -> Action:
 
     if context.action_candidates:
 
-        candidate = context.action_candidates[0]
+        candidate = (
+            context.action_candidates[0]
+        )
 
         return Action(
             action=candidate.action,
@@ -697,7 +861,8 @@ def local_planner(context: SanitizedContext) -> Action:
             y=candidate.y,
             amount=candidate.amount,
             requires_confirmation=(
-                candidate.action == "navigate"
+                candidate.action
+                == "navigate"
             ),
         )
 
@@ -720,7 +885,9 @@ def local_planner(context: SanitizedContext) -> Action:
     "/agent",
     response_model=AgentResponse,
 )
-async def agent(request: AgentRequest):
+async def agent(
+    request: AgentRequest
+):
 
     """
     Main PrivAgent pipeline:
@@ -748,28 +915,36 @@ async def agent(request: AgentRequest):
     # 1. Normalize extension request
     # --------------------------------------------------------
 
-    context = normalize_request(request)
+    context = normalize_request(
+        request
+    )
 
 
     # --------------------------------------------------------
     # 2. Privacy validation
     # --------------------------------------------------------
 
-    validate_context(context)
+    validate_context(
+        context
+    )
 
 
     # --------------------------------------------------------
     # 3. Plan action
     # --------------------------------------------------------
 
-    action = local_planner(context)
+    action = local_planner(
+        context
+    )
 
 
     # --------------------------------------------------------
     # 4. Validate action
     # --------------------------------------------------------
 
-    action = validate_action(action)
+    action = validate_action(
+        action
+    )
 
 
     # --------------------------------------------------------
@@ -778,7 +953,10 @@ async def agent(request: AgentRequest):
 
     return AgentResponse(
         success=True,
-        message="PrivAgent processed the sanitized page successfully.",
+        message=(
+            "PrivAgent processed the "
+            "sanitized page successfully."
+        ),
         action=action,
     )
 
@@ -792,6 +970,7 @@ async def test_agent():
 
     context = SanitizedContext(
         goal="click submit",
+
         visible_controls=[
             VisibleControl(
                 type="button",
@@ -800,6 +979,7 @@ async def test_agent():
                 enabled=True,
             )
         ],
+
         safe_labels=[
             SafeLabel(
                 text="Submit",
@@ -807,16 +987,23 @@ async def test_agent():
                 selector="#submit",
             )
         ],
+
         redacted_regions=[],
         action_candidates=[],
     )
 
 
-    validate_context(context)
+    validate_context(
+        context
+    )
 
-    action = local_planner(context)
+    action = local_planner(
+        context
+    )
 
-    action = validate_action(action)
+    action = validate_action(
+        action
+    )
 
 
     return {
@@ -837,6 +1024,6 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="127.0.0.1",
-        port=8000,
+        port=8001,
         reload=True,
     )

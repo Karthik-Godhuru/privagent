@@ -36,6 +36,7 @@ async function getPageState(tabId) {
 
   try {
 
+    // First, try the content script normally
     const response = await chrome.tabs.sendMessage(
       tabId,
       {
@@ -53,14 +54,41 @@ async function getPageState(tabId) {
 
   } catch (error) {
 
-    console.error(
-      "Page state error:",
-      error
+    console.log(
+      "Content script not connected. Injecting it now..."
     );
 
-    throw new Error(
-      "Privacy/content script is not available on this page."
+    // Inject privacy gate first
+    await chrome.scripting.executeScript({
+      target: {
+        tabId: tabId
+      },
+      files: ["privacy-gate.js"]
+    });
+
+    // Then inject content script
+    await chrome.scripting.executeScript({
+      target: {
+        tabId: tabId
+      },
+      files: ["content.js"]
+    });
+
+    // Try communicating again
+    const response = await chrome.tabs.sendMessage(
+      tabId,
+      {
+        type: "GET_PAGE_STATE"
+      }
     );
+
+    if (!response || !response.success) {
+      throw new Error(
+        response?.error || "Unable to get page state."
+      );
+    }
+
+    return response.pageState;
   }
 }
 
