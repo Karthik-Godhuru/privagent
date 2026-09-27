@@ -266,7 +266,7 @@ chrome.runtime.onMessage.addListener(
 
     if (
       request.type ===
-      "EXECUTE_ACTION"
+      "EXECUTE_BROWSER_ACTION"
     ) {
 
       executeAction(request.action)
