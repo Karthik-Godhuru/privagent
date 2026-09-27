@@ -116,13 +116,13 @@ async function executeAction(action) {
     case "click": {
 
       const element =
-        findElement(action.target);
+        findElement(action.target,action.selector);
 
       if (!element) {
         return {
           success: false,
           message:
-            `Element not found: ${action.target}`
+            `Element not found: ${action.target || action.selector}`
         };
       }
 
@@ -147,13 +147,13 @@ async function executeAction(action) {
     case "type": {
 
       const element =
-        findElement(action.target);
+        findElement(action.target,action.selector);
 
       if (!element) {
         return {
           success: false,
           message:
-            `Input not found: ${action.target}`
+            `Input not found: ${action.target|| action.selector}`
         };
       }
 
@@ -216,7 +216,7 @@ async function executeAction(action) {
     case "select": {
 
       const element =
-        findElement(action.target);
+        findElement(action.target,action.selector);
 
       if (
         !element ||
@@ -226,7 +226,7 @@ async function executeAction(action) {
         return {
           success: false,
           message:
-            `Select element not found: ${action.target}`
+            `Select element not found: ${action.target|| action.selector}`
         };
       }
 
