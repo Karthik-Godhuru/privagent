@@ -1,7 +1,22 @@
-function findElement(target) {
+function findElement(target, selector) {
+  // 0. If a CSS selector exists, try finding it first
+  if (selector) {
+    try {
+      const elementBySelector = document.querySelector(selector);
+      if (elementBySelector) {
+        return elementBySelector;
+      }
+    } catch (error) {
+      console.error("Invalid selector provided:", selector, error);
+    }
+  }
+}
+
+  // Fallback to original target search logic if selector didn't match
   if (!target) {
     return null;
   }
+
 
   const targetText = target.trim().toLowerCase();
 
