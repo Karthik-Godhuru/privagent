@@ -84,6 +84,62 @@ chrome.runtime.onMessage.addListener(
 
             return true;
         }
+        // ------------------------------------------
+        // CAPTURE SCREENSHOT (LOCAL ONLY)
+        // ------------------------------------------
+
+        if (message.type === "CAPTURE_SCREENSHOT") {
+            console.log("CAPTURE_SCREENSHOT request received");
+            chrome.tabs.query(
+                { active: true, lastFocusedWindow: true },
+                (tabs) => {
+                    if (chrome.runtime.lastError) {
+                        sendResponse({
+                            success: false,
+                            error: chrome.runtime.lastError.message
+                        });
+                        return;
+                    }
+
+                    if (!tabs || !tabs[0]) {
+                        sendResponse({
+                            success: false,
+                            error: "No active tab found."
+                        });
+                        return;
+                    }
+
+                    chrome.tabs.captureVisibleTab(
+                        tabs[0].windowId,
+                        { format: "png" },
+                        (dataUrl) => {
+                            if (chrome.runtime.lastError) {
+                                sendResponse({
+                                    success: false,
+                                    error: chrome.runtime.lastError.message
+                                });
+                                return;
+                            }
+
+                            if (!dataUrl) {
+                                sendResponse({
+                                    success: false,
+                                    error: "Screenshot capture returned no image."
+                                });
+                                return;
+                            }
+
+                            sendResponse({
+                                success: true,
+                                dataUrl: dataUrl
+                            });
+                        }
+                    );
+                }
+            );
+
+            return true;
+        }
 
 
         // ------------------------------------------

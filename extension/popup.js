@@ -276,3 +276,34 @@ runButton.addEventListener(
     }
   }
 );
+
+
+const captureButton = document.getElementById("captureButton");
+const screenshotPreview = document.getElementById("screenshotPreview");
+
+captureButton.addEventListener("click", async () => {
+    console.log("Capture Screenshot button clicked");
+    captureButton.disabled = true;
+    statusElement.textContent = "Capturing screenshot...";
+
+    try {
+        console.log("Sending screenshot request to background");
+        const response = await chrome.runtime.sendMessage({
+            type: "CAPTURE_SCREENSHOT"
+        });
+
+        if (!response || !response.success || !response.dataUrl) {
+            throw new Error(response?.error || "Screenshot capture failed.");
+        }
+
+        screenshotPreview.src = response.dataUrl;
+        screenshotPreview.style.display = "block";
+        resultElement.textContent = "Screenshot captured locally.";
+        statusElement.textContent = "Screenshot ready.";
+    } catch (error) {
+        statusElement.textContent = "Screenshot capture failed.";
+        resultElement.textContent = error.message;
+    } finally {
+        captureButton.disabled = false;
+    }
+});
