@@ -284,6 +284,9 @@ const screenshotPreview = document.getElementById("screenshotPreview");
 captureButton.addEventListener("click", async () => {
     console.log("Capture Screenshot button clicked");
     captureButton.disabled = true;
+    screenshotPreview.style.display = "none";
+    screenshotPreview.removeAttribute("src");
+
     statusElement.textContent = "Capturing screenshot...";
 
     try {
@@ -294,13 +297,17 @@ captureButton.addEventListener("click", async () => {
 
         if (!response || !response.success || !response.dataUrl) {
             throw new Error(response?.error || "Screenshot capture failed.");
-        }
+    }
+const redacted = await redactScreenshotDataUrl(response.dataUrl);
+screenshotPreview.src = redacted.dataUrl;
+screenshotPreview.style.display = "block";
+resultElement.textContent =
+    `Screenshot processed locally. Redacted lines: ${redacted.redactedLines}`;
+statusElement.textContent = "Redacted screenshot ready.";
 
-        screenshotPreview.src = response.dataUrl;
-        screenshotPreview.style.display = "block";
-        resultElement.textContent = "Screenshot captured locally.";
-        statusElement.textContent = "Screenshot ready.";
     } catch (error) {
+        screenshotPreview.style.display = "none";
+        screenshotPreview.removeAttribute("src");
         statusElement.textContent = "Screenshot capture failed.";
         resultElement.textContent = error.message;
     } finally {

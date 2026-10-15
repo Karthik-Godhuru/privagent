@@ -3,7 +3,9 @@
   "name": "PrivAgent",
   "version": "1.0.0",
   "description": "Privacy-preserving browser AI agent",
-
+  "content_security_policy": {
+  "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+},
   "permissions": [
     "activeTab",
     "tabs",
