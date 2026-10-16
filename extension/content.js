@@ -40,6 +40,20 @@ function getPageState() {
 }
 
 // ------------------------------------------------------------
+// SENSITIVE INPUT TYPES — never read .value from these
+// ------------------------------------------------------------
+
+// These input types can hold live secrets typed by the user.
+// We allow only static metadata (aria-label, placeholder) so
+// no secret ever enters the page-state that travels to the server.
+const SENSITIVE_INPUT_TYPES = new Set([
+    "password", // login / PIN fields
+    "hidden",   // CSRF tokens, session IDs, internal state
+    "tel",      // phone / OTP fields on banking forms
+]);
+
+
+// ------------------------------------------------------------
 // FIND INTERACTIVE ELEMENTS
 // ------------------------------------------------------------
 
@@ -51,6 +65,14 @@ function findInteractiveElements() {
 
     return Array.from(elements).map((element, index) => {
 
+        // For sensitive input types read only static metadata —
+        // never the live value the user has typed.
+        const isSensitive =
+            element.tagName === "INPUT" &&
+            SENSITIVE_INPUT_TYPES.has(
+                (element.type || "").toLowerCase()
+            );
+
         return {
             id: `element_${index}`,
 
@@ -60,7 +82,7 @@ function findInteractiveElements() {
                 element.innerText ||
                 element.getAttribute("aria-label") ||
                 element.getAttribute("placeholder") ||
-                element.value ||
+                (isSensitive ? "" : element.value) ||
                 "",
 
             selector: createSelector(element),

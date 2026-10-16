@@ -1,0 +1,39 @@
+﻿# Python environments and caches
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+credentials*.json
+service-account*.json
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+
+# Node.js dependencies and build output
+node_modules/
+dist/
+build/
+
+# Local databases and logs
+*.sqlite
+*.sqlite3
+*.db
+*.log
+
+# Operating system and editor files
+Thumbs.db
+.DS_Store
