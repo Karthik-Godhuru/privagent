@@ -586,23 +586,15 @@ def validate_action(action: Action) -> Action:
 
 
 # ============================================================
-# SIMPLE LOCAL PLANNER
+# OBSERVABLE GOAL COMPLETION DETECTION
 # ============================================================
 
-def local_planner(context: SanitizedContext) -> Action:
+def check_goal_completion(context: SanitizedContext) -> Optional[Action]:
     """
-    Temporary rule-based planner.
-
-    This allows the complete browser -> privacy -> server
-    -> action pipeline to work before connecting an LLM/VLM.
+    Check if the user's goal has already been verifiably accomplished
+    by inspecting the sanitized observable state and execution history.
     """
-
     goal = context.goal.lower().strip()
-
-
-    # ========================================================
-    # 0. VERIFIED GOAL COMPLETION DETECTION
-    # ========================================================
 
     # A. View Statement Goal: Check if statement is visibly loaded
     if "statement" in goal and any(w in goal for w in ["view", "click", "open", "show"]):
@@ -643,6 +635,31 @@ def local_planner(context: SanitizedContext) -> Action:
                         action="noop",
                         requires_confirmation=False,
                     )
+
+    return None
+
+
+# ============================================================
+# SIMPLE LOCAL PLANNER
+# ============================================================
+
+def local_planner(context: SanitizedContext) -> Action:
+    """
+    Temporary rule-based planner.
+
+    This allows the complete browser -> privacy -> server
+    -> action pipeline to work before connecting an LLM/VLM.
+    """
+
+    # ========================================================
+    # 0. VERIFIED GOAL COMPLETION DETECTION
+    # ========================================================
+
+    completion = check_goal_completion(context)
+    if completion:
+        return completion
+
+    goal = context.goal.lower().strip()
 
 
     # ========================================================
@@ -906,13 +923,19 @@ async def agent(
     action = None
     planner_source = "local-deterministic"
 
+    # Fast-path: Check for verified observable goal completion before model invocation
+    completion_action = check_goal_completion(context)
+    if completion_action:
+        action = completion_action
+        planner_source = "local-deterministic"
+
     model_configured = bool(
         os.getenv("PRIVAGENT_MODEL_ENDPOINT")
         or os.getenv("GEMINI_API_KEY")
         or os.getenv("PRIVAGENT_API_KEY")
     )
 
-    if model_configured:
+    if action is None and model_configured:
         try:
             try:
                 from llm_planner import plan_with_model
@@ -930,6 +953,14 @@ async def agent(
                 if plan_result:
                     parsed_dict, planner_source = plan_result
                     action = Action(**parsed_dict)
+                    # If model proposed a click on an element that is already in completed state, convert to noop
+                    if action.action == "click" and action.selector:
+                        for ctrl in context.visible_controls:
+                            if ctrl.selector == action.selector:
+                                ctrl_lbl = (ctrl.label or "").lower().strip()
+                                if any(term in ctrl_lbl for term in ["loaded", "settled", "completed", "success"]):
+                                    action = Action(action="noop", requires_confirmation=False)
+                                    break
         except Exception:
             action = None
 

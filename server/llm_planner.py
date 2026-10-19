@@ -128,6 +128,9 @@ def build_planner_prompt(
         "- navigate: {\"action\": \"navigate\", \"url\": \"https://...\", \"reasoning\": \"...\"}\n"
         "- wait: {\"action\": \"wait\", \"reasoning\": \"...\"}\n"
         "- noop: {\"action\": \"noop\", \"reasoning\": \"...\"}\n\n"
+        "Guidelines:\n"
+        "- If the user goal has already been accomplished (for example, the requested section or data is already visible, or a button indicates a completed/loaded state such as 'Statement Loaded'), output action: noop.\n"
+        "- Do NOT repeat an action if its observable outcome is already achieved.\n\n"
         "Respond ONLY with a valid JSON object matching the schema above. No markdown code fences, no extra text.\n\n"
         f"Input Data:\n{json.dumps(prompt_data, indent=2)}"
     )

@@ -107,6 +107,87 @@ function validateActionGrounded(action, pageState) {
 }
 
 // --------------------------------------------------
+// PAGE STATE FINGERPRINTING & OBSERVABLE COMPLETION
+// --------------------------------------------------
+
+function getPageControls(pageState) {
+    if (!pageState || typeof pageState !== "object") return [];
+    if (Array.isArray(pageState.elements)) return pageState.elements;
+    if (Array.isArray(pageState.visible_controls)) return pageState.visible_controls;
+    return [];
+}
+
+function computePageStateFingerprint(pageState) {
+    if (!pageState || typeof pageState !== "object") return "";
+    const url = pageState.url || "";
+    const title = (pageState.title || "").trim();
+    const text = (pageState.text || "").replace(/\s+/g, " ").trim();
+    const controls = getPageControls(pageState);
+
+    // Semantic control fingerprinting: normalize volatile random IDs to ensure
+    // we track genuine semantic state changes (labels, types, enabled flags)
+    const elementsKey = controls.map(el => {
+        const type = (el.type || "").toLowerCase();
+        const subtype = (el.subtype || "").toLowerCase();
+        const label = (el.label || "").trim().toLowerCase();
+        const enabled = el.enabled !== false;
+        const isSubmit = Boolean(el.isSubmit);
+        const rawSelector = el.selector || "";
+        const stableSelector = rawSelector.replace(/pa-[a-z0-9]+/g, "pa-id");
+        return `${type}:${subtype}:${label}:${enabled}:${isSubmit}:${stableSelector}`;
+    }).join(";");
+
+    return `${url}::${title}::${text}::${elementsKey}`;
+}
+
+function isGoalCompleted(goal, pageState, history = []) {
+    if (!goal || typeof goal !== "string") return false;
+    const goalLower = goal.toLowerCase().trim();
+
+    const controls = getPageControls(pageState);
+    const pageText = (pageState?.text || "").toLowerCase();
+
+    // 1. View Statement Goal: Check if statement is visibly loaded in controls or page text
+    if (goalLower.includes("statement") && ["view", "click", "open", "show", "load"].some(w => goalLower.includes(w))) {
+        for (const ctrl of controls) {
+            const lbl = (ctrl.label || "").toLowerCase().trim();
+            if (lbl.includes("statement loaded") || lbl === "statement loaded" || lbl.includes("hide statement")) {
+                return true;
+            }
+        }
+        if (pageText.includes("statement loaded") || (pageText.includes("account statement") && pageText.includes("salary credit"))) {
+            return true;
+        }
+    }
+
+    // 2. Single-Action Execution Outcome Check:
+    // If an action was already executed in history and the page reflects completion
+    const hasHistory = Array.isArray(history) && history.length > 0;
+    if (hasHistory) {
+        const isSingleClick = (
+            goalLower.startsWith("click ") ||
+            goalLower.startsWith("press ") ||
+            goalLower.startsWith("tap ") ||
+            goalLower.startsWith("open ")
+        ) && ![" then ", " and ", " after "].some(kw => goalLower.includes(kw));
+
+        if (isSingleClick) {
+            for (const ctrl of controls) {
+                const lbl = (ctrl.label || "").toLowerCase().trim();
+                if (["loaded", "submitted", "success", "confirmed", "settled", "completed"].some(term => lbl.includes(term))) {
+                    return true;
+                }
+            }
+            if (["success", "completed successfully", "statement loaded"].some(term => pageText.includes(term))) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+// --------------------------------------------------
 // TASK SESSION & CONCURRENCY LOCK
 // --------------------------------------------------
 
@@ -127,6 +208,7 @@ function startTask(command) {
         status: "running",
         history: [],
         lastSignature: null,
+        lastStateFingerprint: null,
         repeatCount: 0
     };
 
@@ -550,17 +632,19 @@ async function runAgent(message) {
     const action = result.action;
 
     // 1. Goal Complete
-    if (action.action === "noop") {
+    const isCompleted = action.action === "noop" || isGoalCompleted(message.command, page, message.history || message.previousActions);
+    if (isCompleted) {
         if (currentTask) {
             currentTask.status = "completed";
             currentTask.lastSignature = null;
+            currentTask.lastStateFingerprint = null;
             currentTask.repeatCount = 0;
         }
         return {
             success: true,
             isNoop: true,
             status: "completed",
-            action: action,
+            action: action.action === "noop" ? action : { action: "noop" },
             planner: result.planner,
             message: result.message || "Goal accomplished."
         };
@@ -579,17 +663,23 @@ async function runAgent(message) {
 
     // 3. Infinite Loop Detection
     const sig = `${action.action}:${action.selector || ""}:${action.value || ""}:${action.url || ""}`;
+    const stateFingerprint = computePageStateFingerprint(page);
+
     if (!currentTask || currentTask.command !== message.command) {
         currentTask = {
             id: Date.now(),
             command: message.command,
             step: message.step || 1,
             lastSignature: sig,
+            lastStateFingerprint: stateFingerprint,
             repeatCount: 0
         };
     } else {
         currentTask.step = message.step || (currentTask.step + 1);
-        if (sig === currentTask.lastSignature) {
+        const isSameAction = sig === currentTask.lastSignature;
+        const isStateUnchanged = currentTask.lastStateFingerprint !== null && stateFingerprint === currentTask.lastStateFingerprint;
+
+        if (isSameAction && isStateUnchanged) {
             currentTask.repeatCount++;
             if (currentTask.repeatCount >= (action.action === "wait" ? 2 : 1)) {
                 return {
@@ -601,6 +691,7 @@ async function runAgent(message) {
             }
         } else {
             currentTask.lastSignature = sig;
+            currentTask.lastStateFingerprint = stateFingerprint;
             currentTask.repeatCount = 0;
         }
     }
@@ -888,6 +979,7 @@ async function runBoundedAgentLoop({
         status: "running",
         history: [],
         lastSignature: null,
+        lastStateFingerprint: null,
         repeatCount: 0
     };
 
@@ -964,14 +1056,16 @@ async function runBoundedAgentLoop({
                 };
             }
 
-            // 3. Goal Completion Termination (noop)
-            if (action.action === "noop") {
+            // 3. Goal Completion Termination (noop or observable completion)
+            const isCompleted = action.action === "noop" || isGoalCompleted(command, pageState, currentTask.history);
+            if (isCompleted) {
+                const finalAction = action.action === "noop" ? action : { action: "noop" };
                 onProgressFn({
                     step,
                     maxSteps,
                     status: "completed",
                     phase: "completed",
-                    action,
+                    action: finalAction,
                     message: "Goal completed."
                 });
                 return {
@@ -979,7 +1073,7 @@ async function runBoundedAgentLoop({
                     status: "completed",
                     step,
                     history: currentTask.history,
-                    action,
+                    action: finalAction,
                     message: "Goal completed."
                 };
             }
@@ -999,7 +1093,11 @@ async function runBoundedAgentLoop({
 
             // 5. Infinite Loop Detection
             const sig = `${action.action}:${action.selector || ""}:${action.value || ""}:${action.url || ""}`;
-            if (sig === currentTask.lastSignature) {
+            const stateFingerprint = computePageStateFingerprint(pageState);
+            const isSameAction = sig === currentTask.lastSignature;
+            const isStateUnchanged = currentTask.lastStateFingerprint !== null && stateFingerprint === currentTask.lastStateFingerprint;
+
+            if (isSameAction && isStateUnchanged) {
                 currentTask.repeatCount++;
                 if (currentTask.repeatCount >= (action.action === "wait" ? 2 : 1)) {
                     return {
@@ -1013,6 +1111,7 @@ async function runBoundedAgentLoop({
                 }
             } else {
                 currentTask.lastSignature = sig;
+                currentTask.lastStateFingerprint = stateFingerprint;
                 currentTask.repeatCount = 0;
             }
 
@@ -1108,6 +1207,9 @@ if (typeof module !== "undefined" && module.exports) {
         CONSEQUENTIAL_KEYWORDS,
         isConsequentialAction,
         validateActionGrounded,
+        getPageControls,
+        computePageStateFingerprint,
+        isGoalCompleted,
         startTask,
         endTask,
         runAgent,

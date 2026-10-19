@@ -26,6 +26,9 @@ const {
     CONSEQUENTIAL_KEYWORDS,
     isConsequentialAction,
     validateActionGrounded,
+    computePageStateFingerprint,
+    isGoalCompleted,
+    getPageControls,
     startTask,
     endTask,
     runAgent,
@@ -733,6 +736,183 @@ async function runAllTests() {
     check("Unchanged state repeated action strictly halted by loop guard", loopResultUnchanged.status === "failed");
     check("Loop guard explicitly cites infinite loop on unchanged state", loopResultUnchanged.error.includes("Infinite loop detected"));
     check("Does not falsely report success when state was unchanged", loopResultUnchanged.success === false);
+
+    // ------------------------------------------------------------
+    // 14. SEMANTIC PAGE STATE FINGERPRINTING & RESISTANCE TO VOLATILE SELECTORS
+    // ------------------------------------------------------------
+    console.log("\n--- 14. Semantic Page State Fingerprinting Tests ---");
+
+    const stateA = {
+        title: "Test Page",
+        url: "http://example.com/test",
+        text: "Content version 1",
+        elements: [
+            { type: "button", label: "Submit", enabled: true, selector: '[data-privagent-id="pa-abc123"]' }
+        ]
+    };
+
+    const stateA_volatileId = {
+        title: "Test Page",
+        url: "http://example.com/test",
+        text: "Content version 1",
+        elements: [
+            { type: "button", label: "Submit", enabled: true, selector: '[data-privagent-id="pa-xyz999"]' }
+        ]
+    };
+
+    const stateB_labelChanged = {
+        title: "Test Page",
+        url: "http://example.com/test",
+        text: "Content version 1",
+        elements: [
+            { type: "button", label: "Submitted", enabled: true, selector: '[data-privagent-id="pa-abc123"]' }
+        ]
+    };
+
+    const stateC_textChanged = {
+        title: "Test Page",
+        url: "http://example.com/test",
+        text: "Content version 2 - Statement Loaded",
+        elements: [
+            { type: "button", label: "Submit", enabled: true, selector: '[data-privagent-id="pa-abc123"]' }
+        ]
+    };
+
+    const fpA = computePageStateFingerprint(stateA);
+    const fpA_volatile = computePageStateFingerprint(stateA_volatileId);
+    const fpB = computePageStateFingerprint(stateB_labelChanged);
+    const fpC = computePageStateFingerprint(stateC_textChanged);
+
+    check("Fingerprint is invariant to volatile privagent random IDs", fpA === fpA_volatile);
+    check("Fingerprint changes when element label changes", fpA !== fpB);
+    check("Fingerprint changes when page text changes", fpA !== fpC);
+
+    // ------------------------------------------------------------
+    // 15. REPEATED ACTIONS ON GENUINELY CHANGED STATE (NO FALSE INFINITE LOOP)
+    // ------------------------------------------------------------
+    console.log("\n--- 15. Repeated Actions Allowed on Genuinely Changed State ---");
+
+    let itemsLoaded = 5;
+    const paginationResult = await runBoundedAgentLoop({
+        command: "Load more items until page full",
+        stepDelayMs: 0,
+        getPageStateFn: async () => ({
+            title: "Item Feed",
+            text: `Currently showing ${itemsLoaded} items`,
+            elements: [
+                { type: "button", label: "Load More", selector: "#load-more-btn", enabled: true }
+            ]
+        }),
+        planFn: async (goal, pageState, { step }) => {
+            if (step >= 3) {
+                return { action: { action: "noop" } };
+            }
+            // Proposing exact same action on steps 1 and 2, but state changes between steps
+            return { action: { action: "click", selector: "#load-more-btn" } };
+        },
+        executeActionFn: async () => {
+            itemsLoaded += 5; // Observable state change on every click
+            return { success: true };
+        }
+    });
+
+    check("Repeated action signature on changed state does NOT falsely trigger loop error", paginationResult.status === "completed");
+    check("Pagination task successfully completes at step 3", paginationResult.step === 3);
+    check("History accurately records the executed repetitive actions", paginationResult.history.length === 2);
+
+    // ------------------------------------------------------------
+    // 16. OBSERVABLE COMPLETION RESOLUTION FOR RUN_AGENT (POPUP PATH)
+    // ------------------------------------------------------------
+    console.log("\n--- 16. Observable Completion Resolution on RUN_AGENT Message Path ---");
+
+    // 16.1 RUN_AGENT Path: Model proposes repeated click, but observable state reflects completion
+    // The agent must recognize observable completion and return noop/completed instead of failing
+    const mockModelProposesRepeatedClick = async (url, options) => {
+        return {
+            ok: true,
+            json: async () => ({
+                success: true,
+                message: "Model decided to click statement button again.",
+                action: { action: "click", selector: "#statementButton" },
+                planner: "gemini"
+            })
+        };
+    };
+
+    global.fetch = mockModelProposesRepeatedClick;
+
+    // Reset task state for fresh test
+    endTask();
+
+    // Step 1: Initial Click View Statement
+    const step1RunAgent = await dispatchRuntimeMessage({
+        type: "RUN_AGENT",
+        command: "Click View Statement",
+        step: 1,
+        sanitizedContext: bankingInitialState
+    });
+    check("Step 1 returns approved click action", step1RunAgent.action.action === "click");
+
+    // Step 2: Fresh page state has button with 'Statement Loaded'
+    // Server/model returns repeated click on #statementButton
+    // background.js must catch observable completion and return noop with status 'completed'
+    const step2RunAgent = await dispatchRuntimeMessage({
+        type: "RUN_AGENT",
+        command: "Click View Statement",
+        step: 2,
+        history: [{ step: 1, action: step1RunAgent.action }],
+        sanitizedContext: bankingFreshState
+    });
+
+    check("Step 2 recognizes observable completion and returns noop (not false loop error)", step2RunAgent.action.action === "noop");
+    check("Step 2 reports isNoop true", step2RunAgent.isNoop === true);
+    check("Step 2 reports status completed", step2RunAgent.status === "completed");
+    check("Step 2 does not return false infinite loop error", !step2RunAgent.error);
+
+    // 16.2 RUN_AGENT Path: Repeated action on TRULY UNCHANGED state strictly fails
+    endTask();
+    const mockServerEndlessAction = async () => ({
+        ok: true,
+        json: async () => ({
+            success: true,
+            action: { action: "click", selector: "#staticBtn" },
+            planner: "local-deterministic"
+        })
+    });
+    global.fetch = mockServerEndlessAction;
+
+    const staticState = {
+        title: "Static Page",
+        url: "http://example.com/static",
+        text: "Static unchanged body",
+        elements: [
+            { type: "button", label: "Do Nothing", selector: "#staticBtn", enabled: true }
+        ]
+    };
+
+    // Step 1
+    const runAgentStaticStep1 = await dispatchRuntimeMessage({
+        type: "RUN_AGENT",
+        command: "Click Do Nothing",
+        step: 1,
+        sanitizedContext: staticState
+    });
+    check("Static step 1 returns click action", runAgentStaticStep1.action.action === "click");
+
+    // Step 2: Identical state, identical action, unsatisfied goal -> MUST FAIL
+    const runAgentStaticStep2 = await dispatchRuntimeMessage({
+        type: "RUN_AGENT",
+        command: "Click Do Nothing",
+        step: 2,
+        history: [{ step: 1, action: runAgentStaticStep1.action }],
+        sanitizedContext: staticState
+    });
+
+    check("Static step 2 strictly detects infinite loop on unchanged state", runAgentStaticStep2.success === false);
+    check("Static step 2 error explicitly cites infinite loop", runAgentStaticStep2.error.includes("Infinite loop detected: repeated identical action on unchanged state."));
+
+    // Cleanup mock fetch
+    endTask();
 
     // ------------------------------------------------------------
     // SUMMARY
