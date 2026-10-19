@@ -1,15 +1,27 @@
-# main.py
-
+import os
+import re
 from typing import List, Literal, Optional, Dict, Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
+try:
+    from llm_planner import load_env_file
+except ImportError:
+    try:
+        from server.llm_planner import load_env_file
+    except ImportError:
+        def load_env_file(): pass
+
+load_env_file()
+
 
 # ============================================================
-# APP
+# APP & SECURITY
 # ============================================================
+
+PRIVAGENT_AUTH_TOKEN = os.getenv("PRIVAGENT_AUTH_TOKEN", "privagent-local-token")
 
 app = FastAPI(
     title="PrivAgent API",
@@ -25,9 +37,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-PrivAgent-Token"],
 )
 
 
@@ -101,6 +113,16 @@ class SanitizedContext(BaseModel):
         default_factory=list
     )
 
+    step: Optional[int] = 1
+
+    history: Optional[List[Dict[str, Any]]] = Field(
+        default_factory=list
+    )
+
+    previous_actions: Optional[List[Dict[str, Any]]] = Field(
+        default_factory=list
+    )
+
 
 # ============================================================
 # EXTENSION PAGE STATE
@@ -169,12 +191,19 @@ class AgentRequest(BaseModel):
     elements: Optional[List[ExtensionElement]] = None
 
     sanitizedContext: Optional[Dict[str, Any]] = None
+    sanitized_context: Optional[Dict[str, Any]] = None
     pageState: Optional[Dict[str, Any]] = None
 
     visible_controls: Optional[List[VisibleControl]] = None
     safe_labels: Optional[List[SafeLabel]] = None
     redacted_regions: Optional[List[RedactedRegion]] = None
     action_candidates: Optional[List[ActionCandidate]] = None
+
+    task_state: Optional[Dict[str, Any]] = None
+    step: Optional[int] = None
+    history: Optional[List[Dict[str, Any]]] = None
+    previous_actions: Optional[List[Dict[str, Any]]] = None
+    previousActions: Optional[List[Dict[str, Any]]] = None
 
 
 class Action(BaseModel):
@@ -207,6 +236,7 @@ class AgentResponse(BaseModel):
     success: bool
     message: str
     action: Action
+    planner: Optional[str] = "local-deterministic"
 
 
 # ============================================================
@@ -244,17 +274,24 @@ SENSITIVE_KEYWORDS = [
     "credit_card",
     "card_number",
     "cvv",
+    "cvc",
     "otp",
     "aadhaar",
     "pan_number",
     "account_number",
     "bank_account",
+    "upi",
+    "pin",
+    "ssn",
+    "passport",
 ]
 
 
 def contains_sensitive_text(text: str) -> bool:
     """
     Basic server-side fail-closed privacy check.
+    Uses word boundary check for short acronyms/words (len <= 4, e.g. pin, otp, cvv)
+    to prevent false positives like 'shopping' (pin), 'hotpot' (otp), 'opinion' (pin).
     """
 
     if not text:
@@ -263,8 +300,12 @@ def contains_sensitive_text(text: str) -> bool:
     lower_text = text.lower()
 
     for keyword in SENSITIVE_KEYWORDS:
-        if keyword in lower_text:
-            return True
+        if len(keyword) <= 4:
+            if re.search(r'(?:\b|_)' + re.escape(keyword) + r'(?:\b|_)', lower_text):
+                return True
+        else:
+            if keyword in lower_text:
+                return True
 
     return False
 
@@ -327,6 +368,9 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
 
     if request.sanitizedContext:
         source = request.sanitizedContext
+
+    elif request.sanitized_context:
+        source = request.sanitized_context
 
     elif request.pageState:
         source = request.pageState
@@ -456,6 +500,22 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
         or []
     )
 
+    # --------------------------------------------------------
+    # 9. Step and history tracking
+    # --------------------------------------------------------
+
+    task_state = request.task_state or source.get("task_state", {}) or {}
+    step = request.step or source.get("step") or (task_state.get("step") if isinstance(task_state, dict) else 1) or 1
+    history = (
+        request.history
+        or request.previous_actions
+        or request.previousActions
+        or source.get("history")
+        or source.get("previous_actions")
+        or source.get("previousActions")
+        or (task_state.get("history") if isinstance(task_state, dict) else [])
+        or []
+    )
 
     return SanitizedContext(
         goal=goal,
@@ -463,6 +523,9 @@ def normalize_request(request: AgentRequest) -> SanitizedContext:
         safe_labels=safe_labels,
         redacted_regions=redacted_regions,
         action_candidates=action_candidates,
+        step=step,
+        history=history,
+        previous_actions=history,
     )
 
 
@@ -538,6 +601,51 @@ def local_planner(context: SanitizedContext) -> Action:
 
 
     # ========================================================
+    # 0. VERIFIED GOAL COMPLETION DETECTION
+    # ========================================================
+
+    # A. View Statement Goal: Check if statement is visibly loaded
+    if "statement" in goal and any(w in goal for w in ["view", "click", "open", "show"]):
+        statement_verified = False
+        for control in context.visible_controls:
+            ctrl_label = (control.label or "").lower().strip()
+            if "statement loaded" in ctrl_label or ctrl_label == "statement loaded" or "hide statement" in ctrl_label:
+                statement_verified = True
+                break
+        if not statement_verified:
+            for safe_lbl in context.safe_labels:
+                lbl_text = (safe_lbl.text or "").lower()
+                if "statement loaded" in lbl_text or "account statement" in lbl_text:
+                    statement_verified = True
+                    break
+
+        if statement_verified:
+            return Action(
+                action="noop",
+                requires_confirmation=False,
+            )
+
+    # B. Single-Action Execution Outcome Check:
+    # If a single click action was already executed in history and verified on page
+    if context.history:
+        is_single_click_command = (
+            goal.startswith("click ")
+            or goal.startswith("press ")
+            or goal.startswith("tap ")
+            or goal.startswith("select ")
+        ) and not any(kw in goal for kw in [" then ", " and ", " after "])
+
+        if is_single_click_command:
+            for control in context.visible_controls:
+                ctrl_label = (control.label or "").lower().strip()
+                if any(done_kw in ctrl_label for done_kw in ["loaded", "submitted", "success", "confirmed", "settled", "completed"]):
+                    return Action(
+                        action="noop",
+                        requires_confirmation=False,
+                    )
+
+
+    # ========================================================
     # CLICK
     # ========================================================
 
@@ -571,7 +679,32 @@ def local_planner(context: SanitizedContext) -> Action:
 
 
         # ----------------------------------------------------
-        # Exact / partial label matching
+        # 1. Full phrase match (highest precision)
+        # ----------------------------------------------------
+
+        target_phrase = " ".join(target_words)
+
+        for control in context.visible_controls:
+
+            if not control.enabled:
+                continue
+
+            label = (control.label or "").lower().strip()
+
+            if not label:
+                continue
+
+            if target_phrase and target_phrase in label:
+
+                return Action(
+                    action="click",
+                    selector=control.selector,
+                    requires_confirmation=False,
+                )
+
+
+        # ----------------------------------------------------
+        # 2. Multi-word & single-word match (avoids past-tense/completed states)
         # ----------------------------------------------------
 
         for control in context.visible_controls:
@@ -584,32 +717,32 @@ def local_planner(context: SanitizedContext) -> Action:
             if not label:
                 continue
 
+            # Skip controls that indicate a completed/settled state
+            if any(term in label for term in ["loaded", "settled", "completed", "success", "hide", "close"]):
+                continue
 
-            # Full phrase match
-            target_phrase = " ".join(target_words)
-
-            if target_phrase and target_phrase in label:
-
-                return Action(
-                    action="click",
-                    selector=control.selector,
-                    requires_confirmation=False,
-                )
-
-
-            # Word match
-            for word in target_words:
-
-                if len(word) < 2:
-                    continue
-
-                if word in label:
-
+            if len(target_words) > 1:
+                # When multiple target words exist (e.g. "view", "statement"), require all non-trivial words
+                meaningful_words = [w for w in target_words if len(w) >= 2]
+                if meaningful_words and all(w in label for w in meaningful_words):
                     return Action(
                         action="click",
                         selector=control.selector,
                         requires_confirmation=False,
                     )
+            else:
+                for word in target_words:
+
+                    if len(word) < 2:
+                        continue
+
+                    if word in label:
+
+                        return Action(
+                            action="click",
+                            selector=control.selector,
+                            requires_confirmation=False,
+                        )
 
 
     # ========================================================
@@ -720,7 +853,15 @@ def local_planner(context: SanitizedContext) -> Action:
     "/agent",
     response_model=AgentResponse,
 )
-async def agent(request: AgentRequest):
+async def agent(
+    request: AgentRequest,
+    x_privagent_token: Optional[str] = Header(None),
+):
+    if PRIVAGENT_AUTH_TOKEN and x_privagent_token != PRIVAGENT_AUTH_TOKEN:
+        raise HTTPException(
+            status_code=401,
+            detail="Unauthorized: Missing or invalid X-PrivAgent-Token header.",
+        )
 
     """
     Main PrivAgent pipeline:
@@ -759,10 +900,46 @@ async def agent(request: AgentRequest):
 
 
     # --------------------------------------------------------
-    # 3. Plan action
+    # 3. Plan action (AI Model with Local Deterministic Fallback)
     # --------------------------------------------------------
 
-    action = local_planner(context)
+    action = None
+    planner_source = "local-deterministic"
+
+    model_configured = bool(
+        os.getenv("PRIVAGENT_MODEL_ENDPOINT")
+        or os.getenv("GEMINI_API_KEY")
+        or os.getenv("PRIVAGENT_API_KEY")
+    )
+
+    if model_configured:
+        try:
+            try:
+                from llm_planner import plan_with_model
+            except ImportError:
+                from server.llm_planner import plan_with_model
+
+            if not contains_sensitive_text(context.goal):
+                controls_dicts = [c.model_dump() for c in context.visible_controls]
+                labels_dicts = [l.model_dump() for l in context.safe_labels]
+                plan_result = plan_with_model(
+                    context.goal,
+                    controls_dicts,
+                    labels_dicts,
+                )
+                if plan_result:
+                    parsed_dict, planner_source = plan_result
+                    action = Action(**parsed_dict)
+        except Exception:
+            action = None
+
+    if action is None:
+        action = local_planner(context)
+        planner_source = (
+            "deterministic-fallback"
+            if model_configured
+            else "local-deterministic"
+        )
 
 
     # --------------------------------------------------------
@@ -778,8 +955,9 @@ async def agent(request: AgentRequest):
 
     return AgentResponse(
         success=True,
-        message="PrivAgent processed the sanitized page successfully.",
+        message=f"PrivAgent processed the sanitized page successfully ({planner_source}).",
         action=action,
+        planner=planner_source,
     )
 
 

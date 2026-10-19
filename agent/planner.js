@@ -6,7 +6,8 @@ async function createPlan(userCommand, pageState, taskState = {}) {
             method: "POST",
 
             headers: {
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
+                "X-PrivAgent-Token": (typeof process !== "undefined" && process.env?.PRIVAGENT_AUTH_TOKEN) || "privagent-local-token"
             },
 
             body: JSON.stringify({

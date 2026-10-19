@@ -10,34 +10,140 @@ console.log("PrivAgent content script loaded.");
 // ------------------------------------------------------------
 
 function getPageState() {
+    try {
+        if (
+            typeof PrivAgentPrivacy === "undefined" ||
+            typeof PrivAgentPrivacy.sanitizePageState !== "function"
+        ) {
+            console.error("PrivAgent Privacy Gate is not available - fail-closed.");
+            return {
+                success: false,
+                error: "Privacy Gate not available - fail closed"
+            };
+        }
 
-    const elements = findInteractiveElements();
+        const elements = findInteractiveElements();
 
-    const rawPageState = {
-        title: document.title,
-        url: window.location.href,
-        text: document.body?.innerText || "",
-        elements: elements
-    };
+        const rawPageState = {
+            title: document.title || "",
+            url: window.location.href || "",
+            text: document.body?.innerText || "",
+            elements: elements
+        };
 
-    // Keep raw page data inside the browser.
-    // Only sanitized data is returned.
-    if (
-        typeof PrivAgentPrivacy === "undefined" ||
-        typeof PrivAgentPrivacy.sanitizePageState !== "function"
-    ) {
-        console.error("PrivAgent Privacy Gate is not available.");
+        const sanitized = PrivAgentPrivacy.sanitizePageState(rawPageState);
 
         return {
-            title: "",
-            url: "",
-            text: "",
-            elements: []
+            success: true,
+            pageState: sanitized
+        };
+
+    } catch (error) {
+        console.error("PrivAgent sanitization failure - fail-closed:", error);
+        return {
+            success: false,
+            error: "Sanitization failed - fail closed: " + (error?.message || "Unknown error")
         };
     }
-
-    return PrivAgentPrivacy.sanitizePageState(rawPageState);
 }
+
+// ------------------------------------------------------------
+// SENSITIVE INPUT TYPES & SEMANTIC CHECK
+// ------------------------------------------------------------
+
+const SENSITIVE_INPUT_TYPES = new Set([
+    "password", // login / PIN fields
+    "hidden",   // CSRF tokens, session IDs, internal state
+    "tel",      // phone / OTP fields on banking forms
+]);
+
+const SENSITIVE_FIELD_KEYWORDS = [
+    "password", "passwd", "secret", "token", "otp",
+    "cvv", "cvc", "pin", "ssn", "aadhaar", "pan",
+    "card_number", "cardnumber", "passport"
+];
+
+function isSensitiveElement(element) {
+    if (!element || (element.tagName !== "INPUT" && element.tagName !== "TEXTAREA")) {
+        return false;
+    }
+
+    const type = (element.type || "").toLowerCase();
+    if (SENSITIVE_INPUT_TYPES.has(type)) {
+        return true;
+    }
+
+    const autocomplete = (element.getAttribute("autocomplete") || "").toLowerCase();
+    if (
+        autocomplete.includes("password") ||
+        autocomplete.includes("one-time-code") ||
+        autocomplete.includes("cc-") ||
+        autocomplete.includes("card")
+    ) {
+        return true;
+    }
+
+    const identifier = [
+        element.name || "",
+        element.id || "",
+        element.getAttribute("aria-label") || "",
+        element.getAttribute("placeholder") || ""
+    ].join(" ").toLowerCase();
+
+    for (const word of SENSITIVE_FIELD_KEYWORDS) {
+        const regex = new RegExp(`(^|[^a-z0-9])${word}([^a-z0-9]|$)`, "i");
+        if (regex.test(identifier)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function getElementLabel(element, isSensitive) {
+    // 1. Visible inner text (buttons, links)
+    if (element.innerText && element.innerText.trim()) {
+        return element.innerText.trim();
+    }
+
+    // 2. Explicit accessibility label
+    const ariaLabel = element.getAttribute("aria-label");
+    if (ariaLabel && ariaLabel.trim()) {
+        return ariaLabel.trim();
+    }
+
+    // 3. Associated DOM <label> tag
+    if (element.id) {
+        try {
+            const escapedId = (window.CSS && CSS.escape) ? CSS.escape(element.id) : element.id;
+            const labelElem = document.querySelector(`label[for="${escapedId}"]`);
+            if (labelElem && labelElem.innerText && labelElem.innerText.trim()) {
+                return labelElem.innerText.trim();
+            }
+        } catch (_) {}
+    }
+
+    if (element.closest) {
+        const parentLabel = element.closest("label");
+        if (parentLabel && parentLabel.innerText && parentLabel.innerText.trim()) {
+            return parentLabel.innerText.trim();
+        }
+    }
+
+    // 4. Placeholder
+    const placeholder = element.getAttribute("placeholder");
+    if (placeholder && placeholder.trim()) {
+        return placeholder.trim();
+    }
+
+    // 5. Value fallback (ONLY for non-sensitive inputs)
+    if (!isSensitive && element.value && typeof element.value === "string") {
+        return element.value.trim();
+    }
+
+    return "";
+}
+
 
 // ------------------------------------------------------------
 // FIND INTERACTIVE ELEMENTS
@@ -51,17 +157,21 @@ function findInteractiveElements() {
 
     return Array.from(elements).map((element, index) => {
 
+        const isSensitive = isSensitiveElement(element);
+        const rawLabel = getElementLabel(element, isSensitive);
+        const subtype = (element.getAttribute("type") || element.type || "").toLowerCase();
+        const isSubmit = subtype === "submit" || (element.tagName === "BUTTON" && (!subtype || subtype === "submit") && !!element.form);
+
         return {
             id: `element_${index}`,
 
             type: element.tagName.toLowerCase(),
 
-            label:
-                element.innerText ||
-                element.getAttribute("aria-label") ||
-                element.getAttribute("placeholder") ||
-                element.value ||
-                "",
+            subtype: subtype,
+
+            isSubmit: isSubmit,
+
+            label: rawLabel,
 
             selector: createSelector(element),
 
@@ -242,10 +352,9 @@ chrome.runtime.onMessage.addListener(
         // Return current page state
         if (message.type === "GET_PAGE_STATE") {
 
-            sendResponse({
-                success: true,
-                pageState: getPageState()
-            });
+            const result = getPageState();
+
+            sendResponse(result);
 
             return;
         }

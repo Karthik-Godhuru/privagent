@@ -108,7 +108,7 @@
           id="accountNumber"
           name="accountNumber"
           type="text"
-          value="123456789012"
+          value="DEMO_ACCOUNT_001"
         >
       </div>
 
@@ -118,7 +118,7 @@
           id="phone"
           name="phone"
           type="tel"
-          value="9876543210"
+          value="DEMO_PHONE_TEST"
         >
       </div>
 
@@ -142,10 +142,63 @@
         </button>
       </div>
 
+      <div id="statementSection" style="display: none; margin-top: 20px; padding: 18px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px;">
+        <h3 id="statementHeading" style="margin-top: 0; color: #1e293b; font-size: 16px;">Account Statement</h3>
+        <p style="color: #64748b; font-size: 13px; margin-bottom: 12px;">Recent activity for account DEMO_ACCOUNT_001</p>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+          <thead>
+            <tr style="border-bottom: 2px solid #cbd5e1; text-align: left;">
+              <th style="padding: 6px;">Date</th>
+              <th style="padding: 6px;">Description</th>
+              <th style="padding: 6px;">Amount</th>
+              <th style="padding: 6px;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 6px;">15/10/2026</td>
+              <td style="padding: 6px;">Salary Credit</td>
+              <td style="padding: 6px; color: #16a34a; font-weight: bold;">+₹75,000</td>
+              <td style="padding: 6px;">Settled</td>
+            </tr>
+            <tr style="border-bottom: 1px solid #e2e8f0;">
+              <td style="padding: 6px;">17/10/2026</td>
+              <td style="padding: 6px;">Electricity Bill</td>
+              <td style="padding: 6px; color: #dc2626;">-₹1,200</td>
+              <td style="padding: 6px;">Settled</td>
+            </tr>
+            <tr>
+              <td style="padding: 6px;">18/10/2026</td>
+              <td style="padding: 6px;">UPI Merchant Payment</td>
+              <td style="padding: 6px; color: #dc2626;">-₹450</td>
+              <td style="padding: 6px;">Settled</td>
+            </tr>
+          </tbody>
+        </table>
+        <div id="statementStatus" style="margin-top: 12px; font-weight: bold; color: #15803d; font-size: 14px;">
+          Statement loaded successfully.
+        </div>
+      </div>
+
       <a href="https://example.com" id="helpLink">
         Need Help?
       </a>
     </div>
   </div>
+
+  <script>
+    const statementBtn = document.getElementById("statementButton");
+    if (statementBtn) {
+      statementBtn.addEventListener("click", function () {
+        const section = document.getElementById("statementSection");
+        if (section) {
+          section.style.display = "block";
+        }
+        this.textContent = "Statement Loaded";
+        this.setAttribute("aria-expanded", "true");
+        this.setAttribute("data-statement-loaded", "true");
+      });
+    }
+  </script>
 </body>
 </html>

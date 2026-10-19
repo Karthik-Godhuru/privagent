@@ -37,4 +37,17 @@ const policyResult = applyPrivacyPolicy({
 console.log("\n4. Policy result:");
 console.log(policyResult);
 
+// Automated assertions
+const emailFound = findings.some(f => f.type === "email" && f.count === 1);
+const phoneFound = findings.some(f => f.type === "phone" && f.count === 1);
+const emailRedacted = sanitizedText.includes("[EMAIL_REDACTED]") && !sanitizedText.includes("karthik@example.com");
+const phoneRedacted = sanitizedText.includes("[PHONE_REDACTED]") && !sanitizedText.includes("9876543210");
+const policyAllowed = policyResult.allowed === true && policyResult.state.title === "Checkout";
+
+if (!emailFound || !phoneFound || !emailRedacted || !phoneRedacted || !policyAllowed) {
+    console.error("\n❌ PRIVACY TEST FAILED: Redaction or policy check failed.");
+    process.exit(1);
+}
+
+console.log("\n✓ All privacy checks passed successfully.");
 console.log("\n=== TEST COMPLETE ===");

@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRIVAGENT Flight & Hotel Booking Portal</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      background: #f0f4f8;
+      color: #1e293b;
+      padding: 32px 16px;
+    }
+
+    .container {
+      max-width: 760px;
+      margin: 0 auto;
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      overflow: hidden;
+    }
+
+    .header {
+      background: #0f172a;
+      color: #ffffff;
+      padding: 24px 32px;
+    }
+
+    .header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .header p {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    .notice {
+      background: #eff6ff;
+      border-left: 4px solid #3b82f6;
+      padding: 12px 16px;
+      margin: 20px 32px;
+      font-size: 13px;
+      color: #1e40af;
+      border-radius: 0 6px 6px 0;
+    }
+
+    .section {
+      padding: 20px 32px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+
+    .section h2 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #334155;
+      margin-bottom: 16px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #475569;
+      margin-bottom: 6px;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 14px;
+      color: #0f172a;
+    }
+
+    input:focus, select:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    .summary-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .summary-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .summary-row.total {
+      font-weight: 700;
+      font-size: 16px;
+      border-top: 1px solid #cbd5e1;
+      padding-top: 8px;
+      color: #0f172a;
+    }
+
+    .actions {
+      display: flex;
+      gap: 12px;
+      padding: 24px 32px;
+      background: #f8fafc;
+    }
+
+    .btn {
+      padding: 12px 20px;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      text-align: center;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: #ffffff;
+      flex: 2;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-secondary {
+      background: #e2e8f0;
+      color: #334155;
+      flex: 1;
+    }
+
+    .btn-secondary:hover {
+      background: #cbd5e1;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Flight & Hotel Booking Portal</h1>
+      <p>Synthetic PrivAgent Demo Fixture — Safe Test Harness</p>
+    </div>
+
+    <div class="notice">
+      🔒 <strong>PrivAgent Security Boundary:</strong> Passport numbers, contact PII, and payment credentials are kept local. Only safe labels and actionable controls leave the browser.
+    </div>
+
+    <form id="booking-form" onsubmit="event.preventDefault(); alert('Booking confirmed (Demo)!');">
+      <div class="section">
+        <h2>1. Flight Selection</h2>
+        <div class="grid-2">
+          <div class="field">
+            <label for="departure-city">Departure City</label>
+            <select id="departure-city" name="departure_city">
+              <option value="DEL">New Delhi (DEL)</option>
+              <option value="BOM">Mumbai (BOM)</option>
+              <option value="BLR" selected>Bengaluru (BLR)</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="destination-city">Destination City</label>
+            <select id="destination-city" name="destination_city">
+              <option value="GOI" selected>Goa (GOI)</option>
+              <option value="HYD">Hyderabad (HYD)</option>
+              <option value="CCU">Kolkata (CCU)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>2. Traveler Details</h2>
+        <div class="grid-2">
+          <div class="field">
+            <label for="traveler-name">Traveler Full Name</label>
+            <input type="text" id="traveler-name" name="traveler_name" value="DEMO_TRAVELER" placeholder="Full legal name" />
+          </div>
+          <div class="field">
+            <label for="passport-number">Passport / ID Number (Sensitive)</label>
+            <input type="text" id="passport-number" name="passport_number" autocomplete="off" value="DEMO_PASSPORT_9876" placeholder="A12345678" />
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field">
+            <label for="contact-email">Contact Email</label>
+            <input type="email" id="contact-email" name="contact_email" value="demo.traveler@example.com" placeholder="Email for ticket" />
+          </div>
+          <div class="field">
+            <label for="contact-phone">Contact Phone</label>
+            <input type="tel" id="contact-phone" name="contact_phone" value="DEMO_PHONE_TEST" placeholder="+91 9876543210" />
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>3. Payment & Confirmation</h2>
+        <div class="summary-card">
+          <div class="summary-row">
+            <span>Flight Fare (BLR → GOI)</span>
+            <span>₹4,250</span>
+          </div>
+          <div class="summary-row">
+            <span>Taxes & Airport Surcharges</span>
+            <span>₹680</span>
+          </div>
+          <div class="summary-row total">
+            <span>Total Payable</span>
+            <span id="booking-total-amount">₹4,930</span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="payment-card">Card Number (Sensitive)</label>
+          <input type="text" id="payment-card" name="card_number" autocomplete="cc-number" placeholder="4532 •••• •••• 0366" value="DEMO_CARD_TEST" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="btn btn-secondary" id="btn-cancel-booking">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="btn-confirm-booking">Confirm Flight Booking</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

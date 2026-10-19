@@ -1,4 +1,9 @@
+try {
+    importScripts("privacy-gate.js");
+} catch (_) {}
+
 const SERVER_URL = "http://127.0.0.1:8000";
+const PRIVAGENT_AUTH_TOKEN = "privagent-local-token";
 
 const MAX_STEPS = 6;
 const STEP_DELAY_MS = 600;
@@ -13,113 +18,253 @@ const ALLOWED_ACTIONS = [
 ];
 
 
+const CONSEQUENTIAL_KEYWORDS = [
+    "pay", "transfer", "purchase", "buy", "order",
+    "submit", "confirm", "delete", "remove", "book",
+    "checkout", "withdraw", "deposit", "cancel", "terminate",
+    "clear", "erase", "charge", "send"
+];
+
+function isConsequentialAction(action, elements = []) {
+    if (!action || typeof action !== "object") return false;
+    if (action.action === "navigate") return true;
+    if (action.requires_confirmation === true) return true;
+
+    const selectorLower = (action.selector || "").toLowerCase();
+    for (const kw of CONSEQUENTIAL_KEYWORDS) {
+        if (selectorLower.includes(kw)) {
+            return true;
+        }
+    }
+
+    const elementList = Array.isArray(elements)
+        ? elements
+        : (Array.isArray(elements?.elements) ? elements.elements : (Array.isArray(elements?.visible_controls) ? elements.visible_controls : []));
+
+    if (action.selector && elementList.length > 0) {
+        const targetElement = elementList.find(el => el.selector === action.selector);
+        if (targetElement) {
+            // 1. Structural / Semantic Form Submission Check (not keyword dependent)
+            if (
+                targetElement.isSubmit === true ||
+                targetElement.subtype === "submit" ||
+                targetElement.type === "submit"
+            ) {
+                return true;
+            }
+
+            // 2. Keyword Check on Label
+            const labelLower = (targetElement.label || "").toLowerCase();
+            for (const kw of CONSEQUENTIAL_KEYWORDS) {
+                if (labelLower.includes(kw)) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
+
+function validateActionGrounded(action, pageState) {
+    if (!action || typeof action !== "object") {
+        return { allowed: false, reason: "Invalid action format." };
+    }
+
+    if (!ALLOWED_ACTIONS.includes(action.action)) {
+        return { allowed: false, reason: `Blocked unsupported action: ${action.action}` };
+    }
+
+    if (action.action === "wait" || action.action === "noop") {
+        return { allowed: true };
+    }
+
+    if (action.action === "navigate") {
+        if (!action.url || !/^https?:\/\//i.test(action.url)) {
+            return { allowed: false, reason: "Only HTTP/HTTPS navigation is allowed." };
+        }
+        return { allowed: true };
+    }
+
+    if (!action.selector) {
+        return { allowed: false, reason: "Target selector is missing." };
+    }
+
+    const controls = Array.isArray(pageState?.elements)
+        ? pageState.elements
+        : (Array.isArray(pageState?.visible_controls) ? pageState.visible_controls : []);
+
+    const elementExists = controls.some(el => el.selector === action.selector);
+
+    if (!elementExists) {
+        return {
+            allowed: false,
+            reason: `Stale or ungrounded target: Selector "${action.selector}" does not exist on page.`
+        };
+    }
+
+    return { allowed: true };
+}
+
+// --------------------------------------------------
+// TASK SESSION & CONCURRENCY LOCK
+// --------------------------------------------------
+
+let currentTask = null;
+
+function startTask(command) {
+    if (currentTask && currentTask.status === "running") {
+        return {
+            success: false,
+            error: "Another agent task is currently in progress."
+        };
+    }
+
+    currentTask = {
+        id: Date.now(),
+        command: command || "",
+        step: 0,
+        status: "running",
+        history: [],
+        lastSignature: null,
+        repeatCount: 0
+    };
+
+    return {
+        success: true,
+        taskId: currentTask.id
+    };
+}
+
+function endTask(status = "completed") {
+    if (currentTask) {
+        currentTask.status = status;
+        const taskInfo = { ...currentTask };
+        currentTask = null;
+        return { success: true, task: taskInfo };
+    }
+    return { success: true };
+}
+
+
 // ==================================================
 // EXTENSION INSTALL
 // ==================================================
 
-chrome.runtime.onInstalled.addListener(() => {
-    console.log("PrivAgent installed successfully.");
-});
+if (typeof chrome !== "undefined" && chrome.runtime?.onInstalled) {
+    chrome.runtime.onInstalled.addListener(() => {
+        console.log("PrivAgent installed successfully.");
+    });
+}
 
 
 // ==================================================
 // MESSAGE HANDLER
 // ==================================================
 
-chrome.runtime.onMessage.addListener(
-    (message, sender, sendResponse) => {
+if (typeof chrome !== "undefined" && chrome.runtime?.onMessage) {
+    chrome.runtime.onMessage.addListener(
+        (message, sender, sendResponse) => {
 
-        if (!message || !message.type) {
+            if (!message || !message.type) {
+                sendResponse({
+                    success: false,
+                    error: "Invalid message."
+                });
+
+                return;
+            }
+
+
+            // ------------------------------------------
+            // CHECK SERVER
+            // ------------------------------------------
+
+            if (message.type === "CHECK_SERVER") {
+                checkServer()
+                    .then(sendResponse)
+                    .catch(error => {
+                        console.error("Server check error:", error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                return true;
+            }
+
+
+            // ------------------------------------------
+            // START MULTI-STEP TASK
+            // ------------------------------------------
+
+            if (message.type === "START_TASK") {
+                const res = startTask(message.command);
+                sendResponse(res);
+                return;
+            }
+
+
+            // ------------------------------------------
+            // END MULTI-STEP TASK
+            // ------------------------------------------
+
+            if (message.type === "END_TASK") {
+                const res = endTask(message.status);
+                sendResponse(res);
+                return;
+            }
+
+
+            // ------------------------------------------
+            // RUN AGENT STEP (Multi-step loop)
+            // ------------------------------------------
+
+            if (message.type === "RUN_AGENT_STEP") {
+                runAgentStep(message)
+                    .then(sendResponse)
+                    .catch(error => {
+                        console.error("Agent step error:", error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                return true;
+            }
+
+
+            // ------------------------------------------
+            // RUN AGENT (Single turn backward-compatible)
+            // ------------------------------------------
+
+            if (message.type === "RUN_AGENT") {
+                runAgent(message)
+                    .then(sendResponse)
+                    .catch(error => {
+                        console.error("Agent error:", error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                return true;
+            }
+
+
+            // ------------------------------------------
+            // EXECUTE ACTION
+            // ------------------------------------------
+
+            if (message.type === "EXECUTE_ACTION") {
+                executeAction(message.action)
+                    .then(sendResponse)
+                    .catch(error => {
+                        console.error("Execution error:", error);
+                        sendResponse({ success: false, error: error.message });
+                    });
+                return true;
+            }
+
+
             sendResponse({
                 success: false,
-                error: "Invalid message."
+                error: "Unknown message type."
             });
-
-            return;
         }
-
-
-        // ------------------------------------------
-        // CHECK SERVER
-        // ------------------------------------------
-
-        if (message.type === "CHECK_SERVER") {
-
-            checkServer()
-                .then(sendResponse)
-                .catch(error => {
-
-                    console.error(
-                        "Server check error:",
-                        error
-                    );
-
-                    sendResponse({
-                        success: false,
-                        error: error.message
-                    });
-                });
-
-            return true;
-        }
-
-
-        // ------------------------------------------
-        // RUN AGENT
-        // ------------------------------------------
-
-        if (message.type === "RUN_AGENT") {
-
-            runAgent(message)
-                .then(sendResponse)
-                .catch(error => {
-
-                    console.error(
-                        "Agent error:",
-                        error
-                    );
-
-                    sendResponse({
-                        success: false,
-                        error: error.message
-                    });
-                });
-
-            return true;
-        }
-
-
-        // ------------------------------------------
-        // EXECUTE ACTION
-        // ------------------------------------------
-
-        if (message.type === "EXECUTE_ACTION") {
-
-            executeAction(message.action)
-                .then(sendResponse)
-                .catch(error => {
-
-                    console.error(
-                        "Execution error:",
-                        error
-                    );
-
-                    sendResponse({
-                        success: false,
-                        error: error.message
-                    });
-                });
-
-            return true;
-        }
-
-
-        sendResponse({
-            success: false,
-            error: "Unknown message type."
-        });
-    }
-);
+    );
+}
 
 
 // ==================================================
@@ -129,7 +274,11 @@ chrome.runtime.onMessage.addListener(
 async function checkServer() {
 
     const response =
-        await fetch(`${SERVER_URL}/health`);
+        await fetch(`${SERVER_URL}/health`, {
+            headers: {
+                "X-PrivAgent-Token": PRIVAGENT_AUTH_TOKEN
+            }
+        });
 
 
     if (!response.ok) {
@@ -247,10 +396,24 @@ async function runAgent(message) {
     // BUILD EXACT SanitizedContext EXPECTED BY FASTAPI
     // ==================================================
 
+    let goal = (message.command || "").trim();
+    if (typeof PrivAgentPrivacy !== "undefined" && typeof PrivAgentPrivacy.sanitizeText === "function") {
+        goal = PrivAgentPrivacy.sanitizeText(goal);
+    }
+
+    const previousActions = Array.isArray(message.previousActions)
+        ? message.previousActions
+        : (Array.isArray(message.history)
+            ? message.history
+            : (currentTask?.history ? currentTask.history.map(h => h.action) : []));
+
     const context = {
 
-        goal:
-            message.command.trim(),
+        goal: goal,
+
+        step: message.step || (currentTask ? currentTask.step : 1),
+
+        history: previousActions,
 
         visible_controls:
             visibleControls,
@@ -266,12 +429,6 @@ async function runAgent(message) {
     };
 
 
-    console.log(
-        "PrivAgent sanitized request:",
-        context
-    );
-
-
     // ==================================================
     // SEND SANITIZED CONTEXT TO SERVER
     // ==================================================
@@ -285,7 +442,9 @@ async function runAgent(message) {
 
                 headers: {
                     "Content-Type":
-                        "application/json"
+                        "application/json",
+                    "X-PrivAgent-Token":
+                        PRIVAGENT_AUTH_TOKEN
                 },
 
                 body:
@@ -388,23 +547,78 @@ async function runAgent(message) {
     }
 
 
+    const action = result.action;
+
+    // 1. Goal Complete
+    if (action.action === "noop") {
+        if (currentTask) {
+            currentTask.status = "completed";
+            currentTask.lastSignature = null;
+            currentTask.repeatCount = 0;
+        }
+        return {
+            success: true,
+            isNoop: true,
+            status: "completed",
+            action: action,
+            planner: result.planner,
+            message: result.message || "Goal accomplished."
+        };
+    }
+
+    // 2. Action Grounding & Stale Target Protection
+    const validation = validateActionGrounded(action, page);
+    if (!validation.allowed) {
+        return {
+            success: false,
+            status: "failed",
+            action: action,
+            error: validation.reason
+        };
+    }
+
+    // 3. Infinite Loop Detection
+    const sig = `${action.action}:${action.selector || ""}:${action.value || ""}:${action.url || ""}`;
+    if (!currentTask || currentTask.command !== message.command) {
+        currentTask = {
+            id: Date.now(),
+            command: message.command,
+            step: message.step || 1,
+            lastSignature: sig,
+            repeatCount: 0
+        };
+    } else {
+        currentTask.step = message.step || (currentTask.step + 1);
+        if (sig === currentTask.lastSignature) {
+            currentTask.repeatCount++;
+            if (currentTask.repeatCount >= (action.action === "wait" ? 2 : 1)) {
+                return {
+                    success: false,
+                    status: "failed",
+                    action: action,
+                    error: "Infinite loop detected: repeated identical action on unchanged state."
+                };
+            }
+        } else {
+            currentTask.lastSignature = sig;
+            currentTask.repeatCount = 0;
+        }
+    }
+
+    // 4. Consequential Action Check
+    const requiresConfirmation = isConsequentialAction(action, page.elements || page);
+
     // ==================================================
     // RETURN APPROVED ACTION TO POPUP
     // ==================================================
 
     return {
-
         success: true,
-
-        message:
-            result.message || "",
-
-        action:
-            result.action,
-
-        requiresConfirmation:
-            result.action
-                .requires_confirmation === true
+        action: action,
+        isNoop: false,
+        requiresConfirmation: requiresConfirmation,
+        planner: result.planner,
+        message: result.message || ""
     };
 }
 
@@ -632,4 +846,273 @@ function delay(ms) {
     return new Promise(resolve => {
         setTimeout(resolve, ms);
     });
+}
+
+
+// ==================================================
+// MULTI-STEP AGENT STEP HANDLER
+// ==================================================
+
+async function runAgentStep(message) {
+    return runAgent(message);
+}
+
+
+// ==================================================
+// BOUNDED MULTI-STEP AGENT LOOP ENGINE
+// ==================================================
+
+async function runBoundedAgentLoop({
+    command,
+    tabId = null,
+    maxSteps = MAX_STEPS,
+    stepDelayMs = STEP_DELAY_MS,
+    getPageStateFn,
+    planFn,
+    executeActionFn,
+    confirmFn = async () => true,
+    onProgressFn = () => {}
+}) {
+    if (currentTask && currentTask.status === "running") {
+        return {
+            success: false,
+            status: "failed",
+            error: "Another agent task is currently in progress."
+        };
+    }
+
+    currentTask = {
+        id: Date.now(),
+        command: command || "",
+        step: 0,
+        status: "running",
+        history: [],
+        lastSignature: null,
+        repeatCount: 0
+    };
+
+    try {
+        for (let step = 1; step <= maxSteps; step++) {
+            currentTask.step = step;
+
+            // 1. Capture Page State
+            onProgressFn({
+                step,
+                maxSteps,
+                status: "running",
+                phase: "capture",
+                message: `Step ${step}/${maxSteps}: Capturing sanitized page state...`
+            });
+
+            let pageState;
+            try {
+                pageState = await getPageStateFn(tabId);
+            } catch (err) {
+                return {
+                    success: false,
+                    status: "failed",
+                    step,
+                    history: currentTask.history,
+                    error: "Could not capture page state: " + err.message
+                };
+            }
+
+            if (!pageState || typeof pageState !== "object") {
+                return {
+                    success: false,
+                    status: "failed",
+                    step,
+                    history: currentTask.history,
+                    error: "Invalid page state captured."
+                };
+            }
+
+            // 2. Plan Action
+            onProgressFn({
+                step,
+                maxSteps,
+                status: "running",
+                phase: "planning",
+                message: `Step ${step}/${maxSteps}: Planning next action...`
+            });
+
+            let planResult;
+            try {
+                let sanitizedGoal = command;
+                if (typeof PrivAgentPrivacy !== "undefined" && typeof PrivAgentPrivacy.sanitizeText === "function") {
+                    sanitizedGoal = PrivAgentPrivacy.sanitizeText(sanitizedGoal);
+                }
+                planResult = await planFn(sanitizedGoal, pageState, { step, history: currentTask.history });
+            } catch (err) {
+                return {
+                    success: false,
+                    status: "failed",
+                    step,
+                    history: currentTask.history,
+                    error: "Planning failed: " + err.message
+                };
+            }
+
+            const action = planResult?.action;
+            if (!action || !action.action) {
+                return {
+                    success: false,
+                    status: "failed",
+                    step,
+                    history: currentTask.history,
+                    error: "Planner returned no action."
+                };
+            }
+
+            // 3. Goal Completion Termination (noop)
+            if (action.action === "noop") {
+                onProgressFn({
+                    step,
+                    maxSteps,
+                    status: "completed",
+                    phase: "completed",
+                    action,
+                    message: "Goal completed."
+                });
+                return {
+                    success: true,
+                    status: "completed",
+                    step,
+                    history: currentTask.history,
+                    action,
+                    message: "Goal completed."
+                };
+            }
+
+            // 4. Grounding & Stale Target Validation
+            const validation = validateActionGrounded(action, pageState);
+            if (!validation.allowed) {
+                return {
+                    success: false,
+                    status: "failed",
+                    step,
+                    history: currentTask.history,
+                    action,
+                    error: validation.reason
+                };
+            }
+
+            // 5. Infinite Loop Detection
+            const sig = `${action.action}:${action.selector || ""}:${action.value || ""}:${action.url || ""}`;
+            if (sig === currentTask.lastSignature) {
+                currentTask.repeatCount++;
+                if (currentTask.repeatCount >= (action.action === "wait" ? 2 : 1)) {
+                    return {
+                        success: false,
+                        status: "failed",
+                        step,
+                        history: currentTask.history,
+                        action,
+                        error: "Infinite loop detected: repeated identical action on unchanged state."
+                    };
+                }
+            } else {
+                currentTask.lastSignature = sig;
+                currentTask.repeatCount = 0;
+            }
+
+            // 6. Consequential Action & Confirmation Gate
+            const requiresConfirmation = isConsequentialAction(action, pageState.elements || pageState);
+            if (requiresConfirmation) {
+                onProgressFn({
+                    step,
+                    maxSteps,
+                    status: "waiting_confirmation",
+                    phase: "confirmation",
+                    action,
+                    message: `Step ${step}/${maxSteps}: Awaiting user authorization for ${action.action}...`
+                });
+                const approved = await confirmFn(action, pageState);
+                if (!approved) {
+                    return {
+                        success: false,
+                        status: "blocked",
+                        step,
+                        history: currentTask.history,
+                        action,
+                        reason: "Action rejected by user confirmation gate."
+                    };
+                }
+            }
+
+            // 7. Execute Action
+            onProgressFn({
+                step,
+                maxSteps,
+                status: "running",
+                phase: "execution",
+                action,
+                message: `Step ${step}/${maxSteps}: Executing ${action.action}...`
+            });
+
+            let execResult;
+            try {
+                execResult = await executeActionFn(action, tabId);
+            } catch (err) {
+                return {
+                    success: false,
+                    status: "failed",
+                    step,
+                    history: currentTask.history,
+                    action,
+                    error: "Execution error: " + err.message
+                };
+            }
+
+            if (!execResult || execResult.success === false) {
+                return {
+                    success: false,
+                    status: "failed",
+                    step,
+                    history: currentTask.history,
+                    action,
+                    error: execResult?.error || "Browser action failed."
+                };
+            }
+
+            currentTask.history.push({ step, action, result: execResult });
+
+            // 8. Settle Delay before next step
+            if (step < maxSteps) {
+                await delay(stepDelayMs);
+            }
+        }
+
+        return {
+            success: false,
+            status: "partially_completed",
+            step: maxSteps,
+            history: currentTask.history,
+            message: `Maximum step limit (${maxSteps}) reached before goal completion.`
+        };
+    } finally {
+        currentTask = null;
+    }
+}
+
+
+// ==================================================
+// MODULE EXPORTS (Node.js test compatibility)
+// ==================================================
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = {
+        MAX_STEPS,
+        STEP_DELAY_MS,
+        ALLOWED_ACTIONS,
+        CONSEQUENTIAL_KEYWORDS,
+        isConsequentialAction,
+        validateActionGrounded,
+        startTask,
+        endTask,
+        runAgent,
+        runAgentStep,
+        runBoundedAgentLoop,
+        delay
+    };
 }
