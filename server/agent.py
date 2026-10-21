@@ -332,6 +332,8 @@ class PrivAgent:
             "tap",
             "submit",
             "open",
+            "add",
+            "buy",
         }
 
         return bool(

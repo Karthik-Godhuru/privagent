@@ -101,6 +101,9 @@ analyzeButton.addEventListener(
   "click",
   async () => {
 
+    const command =
+      commandInput.value.trim() || "Analyze page";
+
     statusElement.textContent =
       "Analyzing page...";
 
@@ -121,7 +124,66 @@ analyzeButton.addEventListener(
         );
 
       statusElement.textContent =
-        "Page analyzed successfully.";
+        "Requesting AI agent analysis...";
+
+      try {
+
+        const response =
+          await chrome.runtime.sendMessage({
+
+            type: "RUN_AGENT",
+
+            command: command,
+
+            sanitizedContext: pageState
+          });
+
+        if (!response) {
+          throw new Error(
+            "No response from background service."
+          );
+        }
+
+        if (!response.success) {
+          throw new Error(
+            response.error ||
+            "Agent analysis failed."
+          );
+        }
+
+        resultElement.textContent =
+          JSON.stringify(
+            {
+              agentResponse: response,
+              sanitizedPageState: pageState
+            },
+            null,
+            2
+          );
+
+        statusElement.textContent =
+          "Page analyzed and agent plan received.";
+
+      } catch (agentError) {
+
+        console.error(
+          "AI agent analysis error:",
+          agentError
+        );
+
+        resultElement.textContent =
+          JSON.stringify(
+            {
+              agentError: agentError.message,
+              sanitizedPageState: pageState
+            },
+            null,
+            2
+          );
+
+        statusElement.textContent =
+          "Page analyzed locally (AI agent unavailable).";
+      }
 
     } catch (error) {
 
@@ -243,21 +305,71 @@ runButton.addEventListener(
           );
 
 
-        if (execution?.success) {
+        if (!execution) {
+          throw new Error(
+            "No response from action executor."
+          );
+        }
+
+
+        if (execution.success && execution.verification && !execution.verified) {
 
           statusElement.textContent =
-            "Action completed.";
+            `Action sent; result unverified: ${execution.verification.detail || "The page did not expose a confirmation."}`;
+
+        } else if (execution.success && (execution.verified || !execution.verification)) {
+
+          const actionType =
+            execution.action ||
+            response.action?.action;
+
+          if (actionType === "noop") {
+
+            if (response.ambiguous) {
+              statusElement.textContent =
+                "Ambiguous target: multiple matching elements found.";
+            } else if (response.notFound) {
+              statusElement.textContent =
+                response.message || "Could not find a matching Add to Cart button.";
+            } else if (response.message) {
+              statusElement.textContent =
+                response.message;
+            } else {
+              statusElement.textContent =
+                "No action needed.";
+            }
+
+          } else if (actionType === "wait") {
+
+            statusElement.textContent =
+              "Wait completed.";
+
+          } else if (execution.verified) {
+
+            statusElement.textContent =
+              `Action verified: ${execution.verification?.detail || "Product confirmed in cart."}`;
+
+          } else {
+
+            statusElement.textContent =
+              "Action completed.";
+          }
 
         } else {
 
+          const failureDetail =
+            execution?.error ||
+            execution?.verification?.detail ||
+            "Product was not confirmed in the cart.";
+
           statusElement.textContent =
-            "Action execution failed.";
+            `Action failed: ${failureDetail}`;
         }
 
       } else {
 
         statusElement.textContent =
-          "Agent completed.";
+          "Agent completed (no action returned).";
       }
 
 
