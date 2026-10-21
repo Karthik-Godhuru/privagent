@@ -118,13 +118,21 @@ function sanitizeElements(elements) {
 
             type: element.type || "",
 
+            role: element.role || "",
+
             label: sanitizeText(
                 element.label || ""
             ),
 
+            ariaLabel: sanitizeText(
+                element.ariaLabel || ""
+            ),
+
             selector: element.selector || null,
 
-            enabled: element.enabled !== false
+            enabled: element.enabled !== false,
+
+            visible: element.visible !== false
         };
 
     });
@@ -135,7 +143,20 @@ function sanitizeElements(elements) {
 // EXPORT
 // ------------------------------------------------------------
 
-globalThis.PrivAgentPrivacy = {
+const PrivAgentPrivacyExport = {
+    sanitizeText,
+    sanitizePageState
+};
+
+if (typeof globalThis !== "undefined") {
+    globalThis.PrivAgentPrivacy = PrivAgentPrivacyExport;
+}
+
+if (typeof module !== "undefined" && module.exports) {
+    module.exports = PrivAgentPrivacyExport;
+}
+
+void {
     sanitizeText,
     sanitizePageState
 };

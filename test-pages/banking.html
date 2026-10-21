@@ -147,5 +147,17 @@
       </a>
     </div>
   </div>
+  <section id="statementResult" hidden aria-live="polite">
+    <h2>Account Statement</h2>
+    <p>Statement loaded successfully.</p>
+  </section>
+
+  <script>
+    document
+      .getElementById("statementButton")
+      .addEventListener("click", () => {
+        document.getElementById("statementResult").hidden = false;
+      });
+  </script>
 </body>
 </html>

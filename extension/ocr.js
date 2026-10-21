@@ -121,9 +121,13 @@ async function redactScreenshotDataUrl(dataUrl) {
 
     const { data } = await worker.recognize(image, {}, { text: true, blocks: true });
 
-    if (!data || !Array.isArray(data.blocks)) {
-      throw new Error("OCR did not return usable bounding boxes.");
-    }
+    if (
+  !data ||
+  !Array.isArray(data.blocks) ||
+  data.blocks.length === 0
+) {
+  throw new Error("OCR did not return usable bounding boxes.");
+}
 
     const lines = [];
 
