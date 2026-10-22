@@ -428,6 +428,9 @@ async function runAgent(message) {
     const visibleControls =
         Array.isArray(page.elements)
             ? page.elements.map(element => {
+                const labelText = typeof element.label === "string" && typeof PrivAgentPrivacy !== "undefined" && typeof PrivAgentPrivacy.sanitizeText === "function"
+                    ? PrivAgentPrivacy.sanitizeText(element.label)
+                    : (element.label || "");
 
                 return {
 
@@ -436,8 +439,7 @@ async function runAgent(message) {
                         "unknown",
 
                     label:
-                        element.label ||
-                        "",
+                        labelText,
 
                     selector:
                         element.selector ||
@@ -459,11 +461,14 @@ async function runAgent(message) {
 
 
     if (page.title) {
+        const titleText = (typeof PrivAgentPrivacy !== "undefined" && typeof PrivAgentPrivacy.sanitizeText === "function")
+            ? PrivAgentPrivacy.sanitizeText(page.title)
+            : page.title;
 
         safeLabels.push({
 
             text:
-                page.title,
+                titleText,
 
             role:
                 "page_title",
@@ -489,13 +494,21 @@ async function runAgent(message) {
             ? message.history
             : (currentTask?.history ? currentTask.history.map(h => h.action) : []));
 
+    const sanitizedActions = previousActions.map(action => {
+        if (!action || typeof action !== "object") return action;
+        if (typeof action.value === "string" && typeof PrivAgentPrivacy !== "undefined" && typeof PrivAgentPrivacy.sanitizeText === "function") {
+            return Object.assign({}, action, { value: PrivAgentPrivacy.sanitizeText(action.value) });
+        }
+        return action;
+    });
+
     const context = {
 
         goal: goal,
 
         step: message.step || (currentTask ? currentTask.step : 1),
 
-        history: previousActions,
+        history: sanitizedActions,
 
         visible_controls:
             visibleControls,
@@ -509,6 +522,31 @@ async function runAgent(message) {
         action_candidates:
             []
     };
+
+
+    // ==================================================
+    // FAIL-CLOSED OUTBOUND EGRESS VERIFICATION
+    // ==================================================
+
+    if (
+        typeof PrivAgentPrivacy === "undefined" ||
+        typeof PrivAgentPrivacy.verifyOrBlock !== "function"
+    ) {
+        throw new Error("Privacy Egress Guard is unavailable - fail closed.");
+    }
+
+    const serializedPayload = JSON.stringify(context);
+
+    let egressVerdict;
+    try {
+        egressVerdict = PrivAgentPrivacy.verifyOrBlock(serializedPayload);
+    } catch (err) {
+        throw new Error(`Privacy Egress Guard error - fail closed: ${err.message}`);
+    }
+
+    if (!egressVerdict || egressVerdict.allowed !== true) {
+        throw new Error(egressVerdict?.reason || "Egress blocked by Privacy Gate - fail closed.");
+    }
 
 
     // ==================================================
@@ -530,7 +568,7 @@ async function runAgent(message) {
                 },
 
                 body:
-                    JSON.stringify(context)
+                    serializedPayload
             }
         );
 

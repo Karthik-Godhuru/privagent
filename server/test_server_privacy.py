@@ -239,7 +239,7 @@ def test_mocked_model_providers():
     sample_labels = [{"text": "Shopping Cart", "role": "page_title", "selector": None}]
 
     # 6.1 Missing Configuration Test
-    res_unconfigured = plan_with_model("click add to cart", sample_controls, sample_labels, endpoint="")
+    res_unconfigured = plan_with_model("click add to cart", sample_controls, sample_labels, endpoint="", api_key="")
     check("Returns None when endpoint is unconfigured", res_unconfigured is None)
 
     # 6.2 Mock Ollama Provider Format (/api/generate)
